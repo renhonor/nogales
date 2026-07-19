@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Presupuesto Remodelación Nogales - COMPLETO</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
         .container { max-width: 1400px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -198,11 +199,66 @@
         .total-display { font-size: 1.6em; font-weight: bold; color: #2c3e50; text-align: right; margin-top: 15px; background: #ecf0f1; padding: 15px; border-radius: 8px; border: 2px solid #bdc3c7; }
         
         .info-box { background: #e8f6f3; border: 1px solid #a3e4d7; padding: 15px; border-radius: 6px; margin-bottom: 20px; color: #16a085; font-size: 0.95em; }
+
+        /* ===== ESTILOS DE AUTENTICACIÓN (nuevo) ===== */
+        #authContainer {
+            max-width: 380px;
+            margin: 80px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        #authContainer h2 { text-align: center; color: #2c3e50; margin-top: 0; }
+        #authContainer input {
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+            padding: 10px;
+            font-weight: normal;
+            font-family: inherit;
+        }
+        #authContainer .btn { width: 48%; margin-right: 4%; margin-bottom: 10px; }
+        #authContainer .btn:last-of-type { margin-right: 0; }
+        #authMsg { text-align: center; color: #e74c3c; font-size: 0.9em; min-height: 1.2em; }
+
+        #userBar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #ecf0f1;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+        #saveStatus { color: #27ae60; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="container">
+<!-- ===== FORMULARIO DE LOGIN / REGISTRO (nuevo, antes no existía) ===== -->
+<div id="authContainer">
+    <h2>🔐 Ingresar</h2>
+    <input id="email" type="email" placeholder="Correo electrónico" autocomplete="username">
+    <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password">
+    <div>
+        <button class="btn btn-sync" onclick="signIn()">Iniciar sesión</button>
+        <button class="btn btn-add" onclick="signUp()">Registrarme</button>
+    </div>
+    <p id="authMsg"></p>
+</div>
+
+<div class="container" id="appContainer" style="display:none;">
+
+    <div id="userBar">
+        <span id="userEmailLabel"></span>
+        <span>
+            <span id="saveStatus"></span>
+            <button class="btn btn-del" style="width:auto; padding:8px 16px; margin-left:10px;" onclick="signOut()">Cerrar sesión</button>
+        </span>
+    </div>
+
     <h1>🏗️ Presupuesto Remodelación Nogales - Cliente (COMPLETO)</h1>
     
     <div class="info-box">
@@ -543,6 +599,9 @@
         { esp: "PARTIDAS ESPECIALES - AIRE ACONDICIONADO", subesp: "AIRE ACONDICIONADO", codigo: "15.2", nombre: "Instalacion equipos sistemas aire acond.", inicio: 26, duracion: 3, mat: 5506.59, mo: 4883.2 }
     ];
 
+    // Copia profunda de los datos originales, usada como plantilla la primera vez que un usuario inicia sesión
+    const datosOriginal = JSON.parse(JSON.stringify(datos));
+
     let siguienteId = datos.length + 1;
     let miGrafico = null;
     const fmtMoneda = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
@@ -607,12 +666,14 @@
         }
         dibujarTabla();
         actualizarTodo();
+        programarGuardado();
     }
 
     function agregarFila() {
         datos.push({ esp: "NUEVO GRUPO", subesp: "NUEVO SUBGRUPO", codigo: "X.X", nombre: "Nueva Partida", inicio: 1, duracion: 1, mat: 1000, mo: 500 });
         dibujarTabla();
         actualizarTodo();
+        programarGuardado();
         setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 100);
     }
 
@@ -621,6 +682,7 @@
             datos.splice(indice, 1);
             dibujarTabla();
             actualizarTodo();
+            programarGuardado();
         }
     }
 
@@ -879,75 +941,145 @@
         container.appendChild(grid);
     }
 
-    window.onload = function() { dibujarTabla(); actualizarTodo(); };
-</script>
+    // ============================================================
+    //  AUTENTICACIÓN Y PERSISTENCIA MULTIUSUARIO (Supabase)
+    // ============================================================
 
-  <script>
-    // Inicializa Supabase con tus credenciales
-    const supabase = supabase.createClient("https://xsnohophlkthtofguamk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzbm9ob3BobGt0aHRvZmd1YW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0Nzg1NjgsImV4cCI6MjEwMDA1NDU2OH0.e05PgfTJFkVnCViV-PmGIwJGPPxFQH1rjGoZ69shYWk");
+    // OJO: se usa "supabaseClient" (no "supabase") porque "supabase" ya es
+    // el nombre global de la librería cargada por el <script> del CDN.
+    // Antes el código hacía: const supabase = supabase.createClient(...)
+    // eso rompe todo el script (ReferenceError) porque intenta leer
+    // "supabase" antes de que termine de declararse a sí misma.
+    const supabaseClient = supabase.createClient(
+        "https://xsnohophlkthtofguamk.supabase.co",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzbm9ob3BobGt0aHRvZmd1YW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0Nzg1NjgsImV4cCI6MjEwMDA1NDU2OH0.e05PgfTJFkVnCViV-PmGIwJGPPxFQH1rjGoZ69shYWk"
+    );
 
     let currentUser = null;
+    let saveTimeout = null;
+
+    function mostrarAuthMsg(msg, esError = true) {
+        const el = document.getElementById('authMsg');
+        el.style.color = esError ? '#e74c3c' : '#27ae60';
+        el.textContent = msg;
+    }
 
     async function signUp() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) alert(error.message);
-      else alert("Usuario registrado. Revisa tu correo para confirmar.");
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        if (!email || !password) return mostrarAuthMsg("Completa correo y contraseña.");
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        if (error) mostrarAuthMsg(error.message);
+        else mostrarAuthMsg("Usuario registrado. Revisa tu correo para confirmar (o inicia sesión si la confirmación está desactivada).", false);
     }
 
     async function signIn() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) alert(error.message);
-      else {
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        if (!email || !password) return mostrarAuthMsg("Completa correo y contraseña.");
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) { mostrarAuthMsg(error.message); return; }
         currentUser = data.user;
-        alert("Sesión iniciada: " + currentUser.email);
-        listarPresupuestos();
-      }
+        await onLoginExitoso();
     }
 
     async function signOut() {
-      await supabase.auth.signOut();
-      currentUser = null;
-      document.getElementById("lista").innerHTML = "";
-      alert("Sesión cerrada.");
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        document.getElementById("appContainer").style.display = "none";
+        document.getElementById("authContainer").style.display = "block";
+        document.getElementById("email").value = "";
+        document.getElementById("password").value = "";
+        mostrarAuthMsg("");
     }
 
-    async function guardarPresupuesto() {
-      if (!currentUser) return alert("Debes iniciar sesión primero.");
-      const titulo = document.getElementById("titulo").value;
-      const contenido = document.getElementById("contenido").value;
-      const { error } = await supabase.from("presupuestos").insert({
-        user_id: currentUser.id,
-        titulo,
-        contenido
-      });
-      if (error) alert(error.message);
-      else {
-        alert("Presupuesto guardado.");
-        listarPresupuestos();
-      }
+    async function onLoginExitoso() {
+        document.getElementById("authContainer").style.display = "none";
+        document.getElementById("appContainer").style.display = "block";
+        document.getElementById("userEmailLabel").textContent = "👤 " + currentUser.email;
+        await cargarPresupuestoUsuario();
     }
 
-    async function listarPresupuestos() {
-      if (!currentUser) return;
-      const { data, error } = await supabase.from("presupuestos")
-        .select("*")
-        .eq("user_id", currentUser.id);
-      if (error) alert(error.message);
-      else {
-        const lista = document.getElementById("lista");
-        lista.innerHTML = "";
-        data.forEach(p => {
-          const li = document.createElement("li");
-          li.textContent = p.titulo + " - " + p.contenido;
-          lista.appendChild(li);
-        });
-      }
+    // Carga la copia del presupuesto del usuario actual. Si es la primera vez
+    // que inicia sesión, se le crea una copia inicial a partir de los datos
+    // originales precargados (datosOriginal), y cada usuario edita solo la suya.
+    async function cargarPresupuestoUsuario() {
+        const { data, error } = await supabaseClient
+            .from("presupuestos")
+            .select("*")
+            .eq("user_id", currentUser.id)
+            .maybeSingle();
+
+        if (error) {
+            alert("Error al cargar tu presupuesto: " + error.message);
+            return;
+        }
+
+        if (data) {
+            datos = data.contenido;
+        } else {
+            datos = JSON.parse(JSON.stringify(datosOriginal));
+            const { error: insertError } = await supabaseClient
+                .from("presupuestos")
+                .insert({ user_id: currentUser.id, contenido: datos });
+            if (insertError) alert("Error al crear tu presupuesto inicial: " + insertError.message);
+        }
+
+        dibujarTabla();
+        actualizarTodo();
     }
-  </script>
-    
+
+    // Autoguardado con "debounce": espera 1.2s después del último cambio
+    // para no disparar una escritura a la base de datos por cada tecla.
+    function programarGuardado() {
+        if (!currentUser) return;
+        document.getElementById("saveStatus").textContent = "Guardando…";
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(guardarEnSupabase, 1200);
+    }
+
+    async function guardarEnSupabase() {
+        if (!currentUser) return;
+        const { error } = await supabaseClient
+            .from("presupuestos")
+            .update({ contenido: datos, updated_at: new Date().toISOString() })
+            .eq("user_id", currentUser.id);
+
+        const status = document.getElementById("saveStatus");
+        if (error) {
+            status.style.color = "#e74c3c";
+            status.textContent = "Error al guardar";
+            console.error(error);
+        } else {
+            status.style.color = "#27ae60";
+            status.textContent = "Guardado ✓";
+            setTimeout(() => { if (status.textContent === "Guardado ✓") status.textContent = ""; }, 2000);
+        }
+    }
+
+    // --- INICIALIZACIÓN: revisa si ya hay una sesión activa al cargar la página ---
+    async function initApp() {
+        const { data } = await supabaseClient.auth.getSession();
+        if (data.session) {
+            currentUser = data.session.user;
+            await onLoginExitoso();
+        } else {
+            document.getElementById("authContainer").style.display = "block";
+            document.getElementById("appContainer").style.display = "none";
+        }
+    }
+
+    // Reacciona a cambios de sesión en otras pestañas / expiración de token
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_OUT") {
+            currentUser = null;
+            document.getElementById("appContainer").style.display = "none";
+            document.getElementById("authContainer").style.display = "block";
+        }
+    });
+
+    window.onload = initApp;
+</script>
+
 </body>
 </html>
