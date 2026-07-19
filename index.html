@@ -882,5 +882,72 @@
     window.onload = function() { dibujarTabla(); actualizarTodo(); };
 </script>
 
+  <script>
+    // Inicializa Supabase con tus credenciales
+    const supabase = supabase.createClient("https://xsnohophlkthtofguamk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzbm9ob3BobGt0aHRvZmd1YW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0Nzg1NjgsImV4cCI6MjEwMDA1NDU2OH0.e05PgfTJFkVnCViV-PmGIwJGPPxFQH1rjGoZ69shYWk");
+
+    let currentUser = null;
+
+    async function signUp() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) alert(error.message);
+      else alert("Usuario registrado. Revisa tu correo para confirmar.");
+    }
+
+    async function signIn() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) alert(error.message);
+      else {
+        currentUser = data.user;
+        alert("Sesión iniciada: " + currentUser.email);
+        listarPresupuestos();
+      }
+    }
+
+    async function signOut() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      document.getElementById("lista").innerHTML = "";
+      alert("Sesión cerrada.");
+    }
+
+    async function guardarPresupuesto() {
+      if (!currentUser) return alert("Debes iniciar sesión primero.");
+      const titulo = document.getElementById("titulo").value;
+      const contenido = document.getElementById("contenido").value;
+      const { error } = await supabase.from("presupuestos").insert({
+        user_id: currentUser.id,
+        titulo,
+        contenido
+      });
+      if (error) alert(error.message);
+      else {
+        alert("Presupuesto guardado.");
+        listarPresupuestos();
+      }
+    }
+
+    async function listarPresupuestos() {
+      if (!currentUser) return;
+      const { data, error } = await supabase.from("presupuestos")
+        .select("*")
+        .eq("user_id", currentUser.id);
+      if (error) alert(error.message);
+      else {
+        const lista = document.getElementById("lista");
+        lista.innerHTML = "";
+        data.forEach(p => {
+          const li = document.createElement("li");
+          li.textContent = p.titulo + " - " + p.contenido;
+          lista.appendChild(li);
+        });
+      }
+    }
+  </script>
+    
 </body>
 </html>
