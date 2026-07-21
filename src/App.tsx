@@ -208,21 +208,29 @@ export default function App() {
         let clienteData: Partida[] = [];
         if (Array.isArray(data.contenido)) {
           clienteData = data.contenido;
-        } else if (data.contenido.cliente) {
-          clienteData = data.contenido.cliente;
+          setPartidasSubcontratista(null);
+        } else if (typeof data.contenido === 'object') {
+          if (Array.isArray(data.contenido.cliente)) {
+            clienteData = data.contenido.cliente;
+          } else {
+            clienteData = JSON.parse(JSON.stringify(defaultPartidas));
+          }
+
+          if (Array.isArray(data.contenido.subcontratista)) {
+            setPartidasSubcontratista(data.contenido.subcontratista);
+          } else {
+            setPartidasSubcontratista(null);
+          }
+
+          if (typeof data.contenido.conversionFactor === 'number') {
+            setConversionFactor(data.contenido.conversionFactor);
+          }
         } else {
           clienteData = JSON.parse(JSON.stringify(defaultPartidas));
+          setPartidasSubcontratista(null);
         }
 
         setPartidasCliente(clienteData);
-
-        if (data.contenido_subcontratista) {
-          setPartidasSubcontratista(data.contenido_subcontratista);
-        } else if (data.contenido && data.contenido.subcontratista) {
-          setPartidasSubcontratista(data.contenido.subcontratista);
-        } else {
-          setPartidasSubcontratista(null);
-        }
 
         if (data.titulo) {
           setProjectTitle(data.titulo);
@@ -233,12 +241,16 @@ export default function App() {
       } else {
         // First login, initialize user's table with the default dataset
         const initialCliente = JSON.parse(JSON.stringify(defaultPartidas));
+        const initialPayload = {
+          cliente: initialCliente,
+          subcontratista: null,
+          conversionFactor: -30
+        };
         const { error: insertError } = await supabase
           .from('presupuestos')
           .insert({ 
             user_id: userId, 
-            contenido: initialCliente, 
-            contenido_subcontratista: null,
+            contenido: initialPayload, 
             titulo: 'Remodelación Nogales' 
           });
         
@@ -414,8 +426,7 @@ export default function App() {
         const { error } = await supabase
           .from('presupuestos')
           .update({ 
-            contenido: newCliente, 
-            contenido_subcontratista: newSubcontratista,
+            contenido: payload, 
             titulo: titleToSave,
             updated_at: new Date().toISOString() 
           })
