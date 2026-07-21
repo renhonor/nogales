@@ -1612,24 +1612,23 @@ export default function App() {
                   })
                 )}
               </tbody>
-              <tfoot>
-                <tr className="bg-slate-900 border-t-2 border-emerald-500/60 sticky bottom-0 z-20">
-                  <td colSpan={4} className="p-2.5 text-right text-[11px] font-black uppercase tracking-wider text-slate-300 font-display">
-                    Total General del Presupuesto
-                  </td>
-                  <td className="p-2.5 text-right font-mono text-[12px] font-black text-rose-400">
-                    {fmtMoneda.format(calculations.totalMateriales)}
-                  </td>
-                  <td className="p-2.5 text-right font-mono text-[12px] font-black text-emerald-400">
-                    {fmtMoneda.format(calculations.totalManoObra)}
-                  </td>
-                  <td className="p-2.5 text-right font-mono text-[13px] font-black text-yellow-400">
-                    {fmtMoneda.format(calculations.totalProyecto)}
-                  </td>
-                  <td className="p-2.5" data-html2canvas-ignore="true"></td>
-                </tr>
-              </tfoot>
             </table>
+          </div>
+
+          {/* Totals footer bar: sits outside the <table> so it cannot affect table-fixed column widths */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
+              <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Suma Materiales</p>
+              <p className="text-sm font-black font-mono text-rose-400 mt-0.5">{fmtMoneda.format(calculations.totalMateriales)}</p>
+            </div>
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
+              <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Suma Mano de Obra</p>
+              <p className="text-sm font-black font-mono text-emerald-400 mt-0.5">{fmtMoneda.format(calculations.totalManoObra)}</p>
+            </div>
+            <div className="bg-slate-950/60 border border-emerald-500/40 rounded-xl px-4 py-3">
+              <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Total Consolidado</p>
+              <p className="text-sm font-black font-mono text-yellow-400 mt-0.5">{fmtMoneda.format(calculations.totalProyecto)}</p>
+            </div>
           </div>
         </section>
 
