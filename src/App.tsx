@@ -1708,8 +1708,8 @@ export default function App() {
                     {/* SVG Chart */}
                     <svg
                       viewBox={`0 0 ${chartWidth} 350`}
-                      className="h-auto select-none block"
-                      style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px` }}
+                      className="select-none block"
+                      style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px`, height: '350px' }}
                     >
                       <defs>
                         <linearGradient id="matGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1866,7 +1866,7 @@ export default function App() {
                       className="mt-4 border border-slate-800/50 rounded-xl bg-slate-950/40 text-[9px] font-mono"
                       style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px` }}
                     >
-                      <table className="w-full border-separate border-spacing-0">
+                      <table className="w-full table-fixed border-separate border-spacing-0">
                         <thead>
                           <tr className="bg-slate-900 text-slate-400 uppercase tracking-wider">
                             <th className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold select-none rounded-tl-xl">
@@ -1891,7 +1891,11 @@ export default function App() {
                               M. Obra
                             </td>
                             {flujoSemanas.map((s, idx) => (
-                              <td key={idx} className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-emerald-300">
+                              <td
+                                key={idx}
+                                className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-emerald-300"
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                              >
                                 {s.mo > 0 ? `S/${Math.round(s.mo).toLocaleString()}` : '—'}
                               </td>
                             ))}
@@ -1901,7 +1905,11 @@ export default function App() {
                               Materiales
                             </td>
                             {flujoSemanas.map((s, idx) => (
-                              <td key={idx} className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-rose-300">
+                              <td
+                                key={idx}
+                                className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-rose-300"
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                              >
                                 {s.mat > 0 ? `S/${Math.round(s.mat).toLocaleString()}` : '—'}
                               </td>
                             ))}
@@ -1916,6 +1924,7 @@ export default function App() {
                                 className={`p-2 text-center border-r border-b border-slate-800 last:border-r-0 text-yellow-300 font-extrabold ${
                                   idx === flujoSemanas.length - 1 ? 'rounded-br-xl' : ''
                                 }`}
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
                               >
                                 {s.total > 0 ? `S/${Math.round(s.total).toLocaleString()}` : '—'}
                               </td>
