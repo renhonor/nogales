@@ -668,7 +668,7 @@ export default function App() {
       const scrollWrapper = element.querySelector('.cashflow-container') as HTMLElement;
       
       // Calculate chart width based on week count
-      const chartWidth = 75 + (flujoSemanas.length || 1) * 60 + 45;
+      const chartWidth = 80 + (flujoSemanas.length || 1) * 65 + 90 + 35;
       const totalWidthWithPadding = chartWidth + 48;
 
       // Save original styles for full viewport capture
@@ -1612,7 +1612,40 @@ export default function App() {
                   })
                 )}
               </tbody>
+              <tfoot className="bg-slate-900 border-t-2 border-emerald-500/60 text-xs font-bold font-mono text-slate-100 sticky bottom-0 z-20 shadow-xl">
+                <tr>
+                  <td colSpan={4} className="p-2.5 text-right font-black uppercase tracking-wider text-emerald-400 font-display">
+                    TOTAL PRESUPUESTO CONSOLIDADO:
+                  </td>
+                  <td className="p-2.5 text-right font-extrabold text-rose-400 font-mono">
+                    {fmtMoneda.format(calculations.totalMateriales)}
+                  </td>
+                  <td className="p-2.5 text-right font-extrabold text-sky-400 font-mono">
+                    {fmtMoneda.format(calculations.totalManoObra)}
+                  </td>
+                  <td className="p-2.5 text-right font-black text-emerald-400 font-mono text-xs pr-3">
+                    {fmtMoneda.format(calculations.totalProyecto)}
+                  </td>
+                  <td data-html2canvas-ignore="true"></td>
+                </tr>
+              </tfoot>
             </table>
+          </div>
+
+          {/* Summary totals footer block for Presupuesto section */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold font-display">Total Materiales</span>
+              <span className="text-sm md:text-base font-black text-rose-400 font-mono mt-0.5">{fmtMoneda.format(calculations.totalMateriales)}</span>
+            </div>
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold font-display">Total Mano de Obra</span>
+              <span className="text-sm md:text-base font-black text-sky-400 font-mono mt-0.5">{fmtMoneda.format(calculations.totalManoObra)}</span>
+            </div>
+            <div className="bg-slate-950/80 border border-emerald-500/30 rounded-xl p-3 flex flex-col justify-center bg-emerald-500/5">
+              <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold font-display">Presupuesto Consolidado</span>
+              <span className="text-sm md:text-base font-black text-emerald-400 font-mono mt-0.5">{fmtMoneda.format(calculations.totalProyecto)}</span>
+            </div>
           </div>
         </section>
 
@@ -1658,25 +1691,26 @@ export default function App() {
             {/* Pure SVG React Interactive Stacked Bar Chart */}
             <div className="relative pt-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
               {(() => {
-                const colWidth = 60;
-                const leftPadding = 75;
-                const rightPadding = 45;
-                const chartWidth = leftPadding + flujoSemanas.length * colWidth + rightPadding;
-                const barWidth = 32;
+                const colWidth = 65;
+                const leftPadding = 80;
+                const totalColWidth = 90;
+                const rightPadding = 35;
+                const chartWidth = leftPadding + flujoSemanas.length * colWidth + totalColWidth + rightPadding;
+                const barWidth = 34;
 
                 return (
                   <div className="cashflow-container overflow-x-auto custom-scrollbar pb-2 relative">
                     {/* Sticky Y-Axis Column (Fixed/Frozen) */}
                     <div className="sticky left-0 z-20 float-left h-0 pointer-events-none">
-                      <div className="absolute left-0 top-0 w-[75px] h-[350px] bg-slate-950 border-r border-slate-800 flex flex-col justify-between pr-3 select-none">
-                        <svg viewBox="0 0 75 350" className="w-[75px] h-[350px] block">
+                      <div className="absolute left-0 top-0 w-[80px] h-[350px] bg-slate-950 border-r border-slate-800 flex flex-col justify-between pr-3 select-none">
+                        <svg viewBox="0 0 80 350" className="w-[80px] h-[350px] block">
                           {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
                             const y = 30 + (1 - ratio) * 260;
                             const labelVal = maxWeeklyCashFlow * ratio;
                             return (
                               <text
                                 key={idx}
-                                x="62"
+                                x="68"
                                 y={y + 4}
                                 textAnchor="end"
                                 className="text-[9.5px] fill-slate-400 font-mono font-extrabold"
@@ -1712,7 +1746,7 @@ export default function App() {
                         return (
                           <g key={idx}>
                             <line
-                              x1="75"
+                              x1="80"
                               y1={y}
                               x2={chartWidth - 25}
                               y2={y}
@@ -1731,7 +1765,6 @@ export default function App() {
                         // Heights based on maximum value
                         const matH = (s.mat / maxWeeklyCashFlow) * 260;
                         const moH = (s.mo / maxWeeklyCashFlow) * 260;
-                        const totalH = matH + moH;
 
                         // Bar placement coordinates
                         const yMo = 290 - moH;
@@ -1843,68 +1876,79 @@ export default function App() {
                       })}
 
                       {/* Base Axis line */}
-                      <line x1="75" y1="290" x2={chartWidth - 25} y2="290" stroke="#334155" strokeWidth="2" />
+                      <line x1="80" y1="290" x2={chartWidth - 25} y2="290" stroke="#334155" strokeWidth="2" />
                     </svg>
 
                     {/* 3 Detail Rows Table Underneath */}
                     <div
-                      className="mt-4 border border-slate-800/50 rounded-xl bg-slate-950/40 text-[9px] font-mono"
+                      className="mt-4 border border-slate-800/80 rounded-xl bg-slate-950/60 text-[9.5px] font-mono shadow-lg"
                       style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px` }}
                     >
                       <table className="w-full border-separate border-spacing-0">
                         <thead>
-                          <tr className="bg-slate-900 text-slate-400 uppercase tracking-wider">
-                            <th className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold select-none rounded-tl-xl">
+                          <tr className="bg-slate-900 text-slate-300 uppercase tracking-wider text-[9px]">
+                            <th className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[80px] min-w-[80px] max-w-[80px] border-r border-b border-slate-800 font-extrabold select-none rounded-tl-xl text-slate-300">
                               Concepto
                             </th>
-                            {flujoSemanas.map((s, idx) => (
+                            {flujoSemanas.map((s) => (
                               <th
                                 key={s.sem}
-                                className={`p-2 text-center border-b border-r border-slate-800 last:border-r-0 font-extrabold ${
-                                  idx === flujoSemanas.length - 1 ? 'rounded-tr-xl' : ''
-                                }`}
+                                className="p-2 text-center border-b border-r border-slate-800 font-black text-slate-300"
                                 style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
                               >
                                 S{s.sem}
                               </th>
                             ))}
+                            <th
+                              className="p-2 text-center border-b border-slate-800 font-black text-emerald-400 bg-slate-900/90 rounded-tr-xl"
+                              style={{ width: `${totalColWidth}px`, minWidth: `${totalColWidth}px` }}
+                            >
+                              TOTAL
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr className="hover:bg-slate-900/30">
-                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold text-emerald-400">
+                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[80px] min-w-[80px] max-w-[80px] border-r border-b border-slate-800/60 font-extrabold text-sky-400">
                               M. Obra
                             </td>
                             {flujoSemanas.map((s, idx) => (
-                              <td key={idx} className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-emerald-300">
+                              <td key={idx} className="p-1.5 text-center border-r border-b border-slate-800/40 text-sky-300 whitespace-nowrap font-medium">
                                 {s.mo > 0 ? `S/${Math.round(s.mo).toLocaleString()}` : '—'}
                               </td>
                             ))}
+                            <td className="p-1.5 text-center border-b border-slate-800/60 text-sky-400 font-black bg-slate-950/80 whitespace-nowrap">
+                              {fmtMoneda.format(calculations.totalManoObra)}
+                            </td>
                           </tr>
                           <tr className="hover:bg-slate-900/30">
-                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold text-rose-400">
+                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[80px] min-w-[80px] max-w-[80px] border-r border-b border-slate-800/60 font-extrabold text-rose-400">
                               Materiales
                             </td>
                             {flujoSemanas.map((s, idx) => (
-                              <td key={idx} className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-rose-300">
+                              <td key={idx} className="p-1.5 text-center border-r border-b border-slate-800/40 text-rose-300 whitespace-nowrap font-medium">
                                 {s.mat > 0 ? `S/${Math.round(s.mat).toLocaleString()}` : '—'}
                               </td>
                             ))}
+                            <td className="p-1.5 text-center border-b border-slate-800/60 text-rose-400 font-black bg-slate-950/80 whitespace-nowrap">
+                              {fmtMoneda.format(calculations.totalMateriales)}
+                            </td>
                           </tr>
-                          <tr className="bg-slate-900/40 font-bold hover:bg-slate-900/60">
-                            <td className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 text-yellow-400 font-extrabold rounded-bl-xl">
+                          <tr className="bg-slate-900/50 font-bold hover:bg-slate-900/70">
+                            <td className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[80px] min-w-[80px] max-w-[80px] border-r border-slate-800 text-amber-400 font-black rounded-bl-xl">
                               Total Sem.
                             </td>
                             {flujoSemanas.map((s, idx) => (
                               <td
                                 key={idx}
-                                className={`p-2 text-center border-r border-b border-slate-800 last:border-r-0 text-yellow-300 font-extrabold ${
-                                  idx === flujoSemanas.length - 1 ? 'rounded-br-xl' : ''
-                                }`}
+                                className="p-1.5 text-center border-r border-slate-800 text-amber-300 font-extrabold whitespace-nowrap"
                               >
                                 {s.total > 0 ? `S/${Math.round(s.total).toLocaleString()}` : '—'}
                               </td>
                             ))}
+                            <td className="p-1.5 text-center text-emerald-400 font-black bg-slate-900 text-xs rounded-br-xl whitespace-nowrap">
+                              {fmtMoneda.format(calculations.totalProyecto)}
+                            </td>
                           </tr>
                         </tbody>
                       </table>
