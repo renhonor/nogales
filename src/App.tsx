@@ -461,6 +461,7 @@ export default function App() {
   };
 
   // Helper to sanitize cloned document for html2canvas to fix Tailwind v4 "oklab" / "oklch" color parsing error
+  // and convert form inputs / sticky elements to clear, unclipped static text for PDFs.
   const sanitizeClonedDocForPDF = (clonedDoc: Document) => {
     // 1. Clean all <style> elements in clonedDoc
     const styleElements = clonedDoc.querySelectorAll('style');
@@ -525,9 +526,40 @@ export default function App() {
         }
       }
     });
+
+    // 4. Convert all <input> and <select> elements to plain text nodes so html2canvas never clips text inside form boxes
+    const inputs = clonedDoc.querySelectorAll('input, select');
+    inputs.forEach((input) => {
+      const el = input as HTMLInputElement | HTMLSelectElement;
+      const val = el.value || '';
+      const textDiv = clonedDoc.createElement('div');
+      textDiv.textContent = val;
+      textDiv.style.display = 'block';
+      textDiv.style.width = '100%';
+      textDiv.style.color = '#f1f5f9';
+      textDiv.style.fontSize = '11px';
+      textDiv.style.fontWeight = '500';
+      textDiv.style.fontFamily = 'sans-serif';
+      textDiv.style.whiteSpace = 'normal';
+      textDiv.style.wordBreak = 'break-word';
+      textDiv.style.padding = '3px 4px';
+      textDiv.style.lineHeight = '1.3';
+      if (el.parentNode) {
+        el.parentNode.replaceChild(textDiv, el);
+      }
+    });
+
+    // 5. Convert sticky positioning to relative so elements do not overlap during offscreen capture
+    const stickyEls = clonedDoc.querySelectorAll('.sticky, [style*="sticky"]');
+    stickyEls.forEach((node) => {
+      const el = node as HTMLElement;
+      el.style.position = 'relative';
+      el.style.top = 'auto';
+      el.style.left = 'auto';
+    });
   };
 
-  // Export functions to PDF using jsPDF and html2canvas
+  // Export functions to PDF using jsPDF and html2canvas-pro
   const exportPresupuestoPDF = async () => {
     if (exportingPDF) return;
     setExportingPDF('presupuesto');
@@ -581,24 +613,33 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      // Generate PDF safely handling module variations
+      // Generate PDF with page margins and crisp scaling
       const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
-      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape
-      const imgWidth = 297;
-      const pageHeight = 210;
+      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape (297mm x 210mm)
+      const margin = 10;
+      const printableWidth = 297 - (margin * 2); // 277mm
+      const printableHeight = 210 - (margin * 2); // 190mm
+
+      const imgWidth = printableWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
       const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      if (imgHeight <= printableHeight) {
+        const yPos = margin + (printableHeight - imgHeight) / 2;
+        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = margin;
+
+        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+        heightLeft -= printableHeight;
+
+        while (heightLeft > 0) {
+          pdf.addPage();
+          position = margin - (imgHeight - heightLeft);
+          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+          heightLeft -= printableHeight;
+        }
       }
 
       pdf.save('presupuesto_Nogales.pdf');
@@ -674,23 +715,31 @@ export default function App() {
 
       const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
       const pdf = new jsPDFClass('l', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      // Fit nicely on landscape page with 10mm margins
       const margin = 10;
-      const printableWidth = pageWidth - (margin * 2);
-      const printableHeight = pageHeight - (margin * 2);
+      const printableWidth = 297 - (margin * 2);
+      const printableHeight = 210 - (margin * 2);
 
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-      const scale = Math.min(printableWidth / canvasWidth, printableHeight / canvasHeight);
-
-      const xPos = margin + (printableWidth - canvasWidth * scale) / 2;
-      const yPos = margin + (printableHeight - canvasHeight * scale) / 2;
-
+      const imgWidth = printableWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
       const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', xPos, yPos, canvasWidth * scale, canvasHeight * scale);
+
+      if (imgHeight <= printableHeight) {
+        const yPos = margin + (printableHeight - imgHeight) / 2;
+        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = margin;
+
+        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+        heightLeft -= printableHeight;
+
+        while (heightLeft > 0) {
+          pdf.addPage();
+          position = margin - (imgHeight - heightLeft);
+          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+          heightLeft -= printableHeight;
+        }
+      }
 
       pdf.save('flujo_de_caja_Nogales.pdf');
     } catch (error) {
@@ -711,30 +760,38 @@ export default function App() {
       const scrollWrapper = element.querySelector('.gantt-container') as HTMLElement;
       const gridEl = element.querySelector('.gantt-grid') as HTMLElement;
 
+      // Calculate full natural width of the Gantt chart (Code 60px + Partida 240px + 45px per week)
+      const totalGanttWidth = 60 + 240 + (calculations.maxSemana * 45);
+
       // Save original styles for full viewport capture
       let origMaxHeight = '';
       let origOverflowY = '';
       let origOverflowX = '';
       let origWidth = '';
+      let origMinWidth = '';
       if (scrollWrapper) {
         origMaxHeight = scrollWrapper.style.maxHeight;
         origOverflowY = scrollWrapper.style.overflowY;
         origOverflowX = scrollWrapper.style.overflowX;
         origWidth = scrollWrapper.style.width;
+        origMinWidth = scrollWrapper.style.minWidth;
 
-        // Force full expansion
+        // Force full width expansion so no month is cut off on the right
         scrollWrapper.style.maxHeight = 'none';
         scrollWrapper.style.overflowY = 'visible';
         scrollWrapper.style.overflowX = 'visible';
-        scrollWrapper.style.width = 'auto';
+        scrollWrapper.style.width = `${totalGanttWidth}px`;
+        scrollWrapper.style.minWidth = `${totalGanttWidth}px`;
       }
 
       // Save original style of grid container
       let origGridWidth = '';
+      let origGridMinWidth = '';
       if (gridEl) {
         origGridWidth = gridEl.style.width;
-        // Ensure grid expands to its full natural content width
-        gridEl.style.width = '100%';
+        origGridMinWidth = gridEl.style.minWidth;
+        gridEl.style.width = `${totalGanttWidth}px`;
+        gridEl.style.minWidth = `${totalGanttWidth}px`;
       }
 
       // Temporarily change sticky elements to static so they render inline in the grid/table
@@ -748,7 +805,7 @@ export default function App() {
       // Wait a moment for layout reflow
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Capture canvas
+      // Capture canvas with html2canvas-pro
       const html2canvasFn = (html2canvas as any).default || html2canvas;
       const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
@@ -759,6 +816,32 @@ export default function App() {
         scrollY: 0,
         onclone: (clonedDoc: Document) => {
           sanitizeClonedDocForPDF(clonedDoc);
+
+          // Additional Gantt-specific enhancements in cloned DOM
+          const clonedScroll = clonedDoc.querySelector('.gantt-container') as HTMLElement;
+          const clonedGrid = clonedDoc.querySelector('.gantt-grid') as HTMLElement;
+          if (clonedScroll) {
+            clonedScroll.style.width = `${totalGanttWidth}px`;
+            clonedScroll.style.minWidth = `${totalGanttWidth}px`;
+            clonedScroll.style.overflow = 'visible';
+            clonedScroll.style.maxHeight = 'none';
+          }
+          if (clonedGrid) {
+            clonedGrid.style.width = `${totalGanttWidth}px`;
+            clonedGrid.style.minWidth = `${totalGanttWidth}px`;
+            clonedGrid.style.overflow = 'visible';
+          }
+
+          // Ensure partida names in Gantt are unclipped and highly visible
+          const nameCells = clonedDoc.querySelectorAll('.g-name');
+          nameCells.forEach((node) => {
+            const cell = node as HTMLElement;
+            cell.style.whiteSpace = 'normal';
+            cell.style.wordBreak = 'break-word';
+            cell.style.overflow = 'visible';
+            cell.style.color = '#f1f5f9';
+            cell.style.fontSize = '11px';
+          });
         }
       });
 
@@ -768,35 +851,44 @@ export default function App() {
         scrollWrapper.style.overflowY = origOverflowY;
         scrollWrapper.style.overflowX = origOverflowX;
         scrollWrapper.style.width = origWidth;
+        scrollWrapper.style.minWidth = origMinWidth;
       }
       if (gridEl) {
         gridEl.style.width = origGridWidth;
+        gridEl.style.minWidth = origGridMinWidth;
       }
       originalStickies.forEach(item => {
         item.el.style.position = item.position;
       });
 
-      // Generate PDF
+      // Generate PDF: Width matches printable landscape page width (277mm), height flows across pages if needed
       const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
       const pdf = new jsPDFClass('l', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth(); // 297
-      const pageHeight = pdf.internal.pageSize.getHeight(); // 210
-
-      // Add margins (10mm on each side)
       const margin = 10;
-      const printableWidth = pageWidth - (margin * 2);
-      const printableHeight = pageHeight - (margin * 2);
+      const printableWidth = 297 - (margin * 2); // 277mm
+      const printableHeight = 210 - (margin * 2); // 190mm
 
-      // Scale to fit on a single landscape page
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-      const scale = Math.min(printableWidth / canvasWidth, printableHeight / canvasHeight);
-
-      const xPos = margin + (printableWidth - canvasWidth * scale) / 2;
-      const yPos = margin + (printableHeight - canvasHeight * scale) / 2;
-
+      const imgWidth = printableWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
       const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', xPos, yPos, canvasWidth * scale, canvasHeight * scale);
+
+      if (imgHeight <= printableHeight) {
+        const yPos = margin + (printableHeight - imgHeight) / 2;
+        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = margin;
+
+        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+        heightLeft -= printableHeight;
+
+        while (heightLeft > 0) {
+          pdf.addPage();
+          position = margin - (imgHeight - heightLeft);
+          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+          heightLeft -= printableHeight;
+        }
+      }
 
       pdf.save('cronograma_Nogales.pdf');
     } catch (error) {
