@@ -460,6 +460,73 @@ export default function App() {
     e.target.value = ''; // Clear value
   };
 
+  // Helper to sanitize cloned document for html2canvas to fix Tailwind v4 "oklab" / "oklch" color parsing error
+  const sanitizeClonedDocForPDF = (clonedDoc: Document) => {
+    // 1. Clean all <style> elements in clonedDoc
+    const styleElements = clonedDoc.querySelectorAll('style');
+    styleElements.forEach((style) => {
+      if (style.textContent) {
+        style.textContent = style.textContent
+          .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
+          .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
+          .replace(/light-dark\([^)]*\)/gi, 'rgb(15, 23, 42)')
+          .replace(/color-mix\([^)]*\)/gi, 'rgb(15, 23, 42)');
+      }
+    });
+
+    // 2. Clean stylesheet rules if accessible
+    try {
+      Array.from(clonedDoc.styleSheets).forEach((sheet) => {
+        try {
+          const rules = sheet.cssRules || sheet.rules;
+          if (rules) {
+            Array.from(rules).forEach((rule) => {
+              if (rule.cssText && (rule.cssText.includes('oklab') || rule.cssText.includes('oklch'))) {
+                const styleObj = (rule as CSSStyleRule).style;
+                if (styleObj) {
+                  for (let i = 0; i < styleObj.length; i++) {
+                    const prop = styleObj[i];
+                    const val = styleObj.getPropertyValue(prop);
+                    if (val && (val.includes('oklab') || val.includes('oklch'))) {
+                      styleObj.setProperty(
+                        prop,
+                        val
+                          .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
+                          .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
+                      );
+                    }
+                  }
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // Ignore cross-origin sheet errors
+        }
+      });
+    } catch (e) {
+      // Ignore sheet errors
+    }
+
+    // 3. Clean all element inline styles
+    const allElements = clonedDoc.querySelectorAll('*');
+    allElements.forEach((node) => {
+      const el = node as HTMLElement;
+      if (el.style && el.style.cssText) {
+        if (
+          el.style.cssText.includes('oklab') ||
+          el.style.cssText.includes('oklch') ||
+          el.style.cssText.includes('light-dark')
+        ) {
+          el.style.cssText = el.style.cssText
+            .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
+            .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
+            .replace(/light-dark\([^)]*\)/gi, 'rgb(15, 23, 42)');
+        }
+      }
+    });
+  };
+
   // Export functions to PDF using jsPDF and html2canvas
   const exportPresupuestoPDF = async () => {
     if (exportingPDF) return;
@@ -499,7 +566,10 @@ export default function App() {
         useCORS: true,
         logging: false,
         scrollX: 0,
-        scrollY: 0
+        scrollY: 0,
+        onclone: (clonedDoc: Document) => {
+          sanitizeClonedDocForPDF(clonedDoc);
+        }
       });
 
       // Restore original styles
@@ -585,7 +655,10 @@ export default function App() {
         useCORS: true,
         logging: false,
         scrollX: 0,
-        scrollY: 0
+        scrollY: 0,
+        onclone: (clonedDoc: Document) => {
+          sanitizeClonedDocForPDF(clonedDoc);
+        }
       });
 
       // Restore original styles
@@ -683,7 +756,10 @@ export default function App() {
         useCORS: true,
         logging: false,
         scrollX: 0,
-        scrollY: 0
+        scrollY: 0,
+        onclone: (clonedDoc: Document) => {
+          sanitizeClonedDocForPDF(clonedDoc);
+        }
       });
 
       // Restore original styles
