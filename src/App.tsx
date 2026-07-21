@@ -51,7 +51,7 @@ export default function App() {
   const [isGuestMode, setIsGuestMode] = useState(false);
 
   // Editable Project Title
-  const [projectTitle, setProjectTitle] = useState('Remodelación Nogales');
+  const [projectTitle, setProjectTitle] = useState('Gestión de Obra 26.1');
 
   // Dual Budget Application Data States (Cliente vs Subcontratista)
   const [partidasCliente, setPartidasCliente] = useState<Partida[]>([]);
@@ -1248,7 +1248,7 @@ export default function App() {
             <Wrench className="h-7 w-7 text-emerald-400" />
           </div>
           <h2 className="mt-6 text-3xl font-extrabold text-white tracking-tight font-display">
-            Remodelación Nogales
+            Gestión de Obra 26.1
           </h2>
           <p className="mt-2 text-sm text-slate-400 max-w-sm mx-auto">
             Plataforma financiera inteligente para control de presupuestos, flujo de caja semanal y cronograma Gantt de obra.
@@ -1278,7 +1278,7 @@ export default function App() {
                   type="email"
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="arquitecto@nogales.com"
+                  placeholder="arquitecto@obra.com"
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/80 transition-all font-mono"
                   required
                 />
@@ -1334,21 +1334,6 @@ export default function App() {
                 className="text-xs font-medium text-slate-400 hover:text-emerald-400 transition-colors underline underline-offset-4 cursor-pointer"
               >
                 {isSignUp ? '¿Ya tiene cuenta? Iniciar Sesión' : '¿No tiene cuenta? Regístrese aquí'}
-              </button>
-
-              <div className="w-full flex items-center my-1 text-slate-700">
-                <div className="flex-1 border-t border-slate-800"></div>
-                <span className="px-3 text-[9px] uppercase font-bold tracking-widest text-slate-600">O BIEN</span>
-                <div className="flex-1 border-t border-slate-800"></div>
-              </div>
-
-              <button
-                type="button"
-                onClick={enterGuestMode}
-                className="w-full bg-slate-950/40 hover:bg-slate-950 border border-slate-800 text-slate-300 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 hover:border-slate-700 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-emerald-400 glow-active" />
-                Ingresar como Invitado (Modo Demo Offline)
               </button>
             </div>
           </div>
