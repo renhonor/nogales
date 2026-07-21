@@ -461,17 +461,40 @@ export default function App() {
   };
 
   // Helper to sanitize cloned document for html2canvas to fix Tailwind v4 "oklab" / "oklch" color parsing error
-  // and convert form inputs / sticky elements to clear, unclipped static text for PDFs.
+  // and convert form inputs to clear, unclipped static text for PDFs without destroying true background colors.
   const sanitizeClonedDocForPDF = (clonedDoc: Document) => {
+    // Dynamic color cache and browser style evaluator
+    const colorCache = new Map<string, string>();
+    const convertColorToRGB = (colorStr: string): string => {
+      if (colorCache.has(colorStr)) return colorCache.get(colorStr)!;
+      try {
+        const div = document.createElement('div');
+        div.style.color = colorStr;
+        document.body.appendChild(div);
+        const computed = window.getComputedStyle(div).color;
+        document.body.removeChild(div);
+        if (computed && (computed.startsWith('rgb') || computed.startsWith('rgba'))) {
+          colorCache.set(colorStr, computed);
+          return computed;
+        }
+      } catch {
+        // fallback
+      }
+      return colorStr;
+    };
+
+    const sanitizeColorRules = (str: string): string => {
+      if (!str) return str;
+      return str.replace(/(oklab|oklch|color-mix|light-dark)\([^)]+\)/gi, (match) => {
+        return convertColorToRGB(match);
+      });
+    };
+
     // 1. Clean all <style> elements in clonedDoc
     const styleElements = clonedDoc.querySelectorAll('style');
     styleElements.forEach((style) => {
       if (style.textContent) {
-        style.textContent = style.textContent
-          .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
-          .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
-          .replace(/light-dark\([^)]*\)/gi, 'rgb(15, 23, 42)')
-          .replace(/color-mix\([^)]*\)/gi, 'rgb(15, 23, 42)');
+        style.textContent = sanitizeColorRules(style.textContent);
       }
     });
 
@@ -482,19 +505,14 @@ export default function App() {
           const rules = sheet.cssRules || sheet.rules;
           if (rules) {
             Array.from(rules).forEach((rule) => {
-              if (rule.cssText && (rule.cssText.includes('oklab') || rule.cssText.includes('oklch'))) {
+              if (rule.cssText && (rule.cssText.includes('oklab') || rule.cssText.includes('oklch') || rule.cssText.includes('light-dark') || rule.cssText.includes('color-mix'))) {
                 const styleObj = (rule as CSSStyleRule).style;
                 if (styleObj) {
                   for (let i = 0; i < styleObj.length; i++) {
                     const prop = styleObj[i];
                     const val = styleObj.getPropertyValue(prop);
-                    if (val && (val.includes('oklab') || val.includes('oklch'))) {
-                      styleObj.setProperty(
-                        prop,
-                        val
-                          .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
-                          .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
-                      );
+                    if (val && (val.includes('oklab') || val.includes('oklch') || val.includes('light-dark') || val.includes('color-mix'))) {
+                      styleObj.setProperty(prop, sanitizeColorRules(val));
                     }
                   }
                 }
@@ -517,12 +535,10 @@ export default function App() {
         if (
           el.style.cssText.includes('oklab') ||
           el.style.cssText.includes('oklch') ||
-          el.style.cssText.includes('light-dark')
+          el.style.cssText.includes('light-dark') ||
+          el.style.cssText.includes('color-mix')
         ) {
-          el.style.cssText = el.style.cssText
-            .replace(/oklab\([^)]*\)/gi, 'rgb(15, 23, 42)')
-            .replace(/oklch\([^)]*\)/gi, 'rgb(16, 185, 129)')
-            .replace(/light-dark\([^)]*\)/gi, 'rgb(15, 23, 42)');
+          el.style.cssText = sanitizeColorRules(el.style.cssText);
         }
       }
     });
@@ -547,15 +563,6 @@ export default function App() {
       if (el.parentNode) {
         el.parentNode.replaceChild(textDiv, el);
       }
-    });
-
-    // 5. Convert sticky positioning to relative so elements do not overlap during offscreen capture
-    const stickyEls = clonedDoc.querySelectorAll('.sticky, [style*="sticky"]');
-    stickyEls.forEach((node) => {
-      const el = node as HTMLElement;
-      el.style.position = 'relative';
-      el.style.top = 'auto';
-      el.style.left = 'auto';
     });
   };
 
@@ -660,22 +667,34 @@ export default function App() {
 
       const scrollWrapper = element.querySelector('.cashflow-container') as HTMLElement;
       
+      // Calculate chart width based on week count
+      const chartWidth = 75 + (flujoSemanas.length || 1) * 60 + 45;
+      const totalWidthWithPadding = chartWidth + 48;
+
       // Save original styles for full viewport capture
+      const origElWidth = element.style.width;
+      const origElMinWidth = element.style.minWidth;
+      element.style.width = `${totalWidthWithPadding}px`;
+      element.style.minWidth = `${totalWidthWithPadding}px`;
+
       let origMaxHeight = '';
       let origOverflowY = '';
       let origOverflowX = '';
       let origWidth = '';
+      let origMinWidth = '';
       if (scrollWrapper) {
         origMaxHeight = scrollWrapper.style.maxHeight;
         origOverflowY = scrollWrapper.style.overflowY;
         origOverflowX = scrollWrapper.style.overflowX;
         origWidth = scrollWrapper.style.width;
+        origMinWidth = scrollWrapper.style.minWidth;
 
         // Force full expansion
         scrollWrapper.style.maxHeight = 'none';
         scrollWrapper.style.overflowY = 'visible';
         scrollWrapper.style.overflowX = 'visible';
-        scrollWrapper.style.width = 'auto';
+        scrollWrapper.style.width = `${chartWidth}px`;
+        scrollWrapper.style.minWidth = `${chartWidth}px`;
       }
 
       // Temporarily change sticky elements to static so they render inline in html2canvas
@@ -699,47 +718,54 @@ export default function App() {
         scrollY: 0,
         onclone: (clonedDoc: Document) => {
           sanitizeClonedDocForPDF(clonedDoc);
+
+          const clonedSection = clonedDoc.getElementById('section-flujocaja');
+          if (clonedSection) {
+            clonedSection.style.width = `${totalWidthWithPadding}px`;
+            clonedSection.style.minWidth = `${totalWidthWithPadding}px`;
+          }
+
+          const clonedCashflow = clonedDoc.querySelector('.cashflow-container') as HTMLElement;
+          if (clonedCashflow) {
+            clonedCashflow.style.width = `${chartWidth}px`;
+            clonedCashflow.style.minWidth = `${chartWidth}px`;
+            clonedCashflow.style.overflow = 'visible';
+            clonedCashflow.style.maxHeight = 'none';
+          }
         }
       });
 
       // Restore original styles
+      element.style.width = origElWidth;
+      element.style.minWidth = origElMinWidth;
+
       if (scrollWrapper) {
         scrollWrapper.style.maxHeight = origMaxHeight;
         scrollWrapper.style.overflowY = origOverflowY;
         scrollWrapper.style.overflowX = origOverflowX;
         scrollWrapper.style.width = origWidth;
+        scrollWrapper.style.minWidth = origMinWidth;
       }
       originalStickies.forEach(item => {
         item.el.style.position = item.position;
       });
 
       const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
-      const pdf = new jsPDFClass('l', 'mm', 'a4');
+      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape (297mm x 210mm)
       const margin = 10;
-      const printableWidth = 297 - (margin * 2);
-      const printableHeight = 210 - (margin * 2);
+      const printableWidth = 297 - (margin * 2); // 277mm
+      const printableHeight = 210 - (margin * 2); // 190mm
 
-      const imgWidth = printableWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // Scale Flujo de caja so all months & weeks fit cleanly onto 1 landscape page
+      const scale = Math.min(printableWidth / canvas.width, printableHeight / canvas.height);
+      const imgWidth = canvas.width * scale;
+      const imgHeight = canvas.height * scale;
+
+      const xPos = margin + (printableWidth - imgWidth) / 2;
+      const yPos = margin + (printableHeight - imgHeight) / 2;
+
       const imgData = canvas.toDataURL('image/png');
-
-      if (imgHeight <= printableHeight) {
-        const yPos = margin + (printableHeight - imgHeight) / 2;
-        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
-      } else {
-        let heightLeft = imgHeight;
-        let position = margin;
-
-        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-        heightLeft -= printableHeight;
-
-        while (heightLeft > 0) {
-          pdf.addPage();
-          position = margin - (imgHeight - heightLeft);
-          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-          heightLeft -= printableHeight;
-        }
-      }
+      pdf.addImage(imgData, 'PNG', xPos, yPos, imgWidth, imgHeight);
 
       pdf.save('flujo_de_caja_Nogales.pdf');
     } catch (error) {
@@ -762,8 +788,14 @@ export default function App() {
 
       // Calculate full natural width of the Gantt chart (Code 60px + Partida 240px + 45px per week)
       const totalGanttWidth = 60 + 240 + (calculations.maxSemana * 45);
+      const totalWidthWithPadding = totalGanttWidth + 48;
 
       // Save original styles for full viewport capture
+      const origElWidth = element.style.width;
+      const origElMinWidth = element.style.minWidth;
+      element.style.width = `${totalWidthWithPadding}px`;
+      element.style.minWidth = `${totalWidthWithPadding}px`;
+
       let origMaxHeight = '';
       let origOverflowY = '';
       let origOverflowX = '';
@@ -818,6 +850,12 @@ export default function App() {
           sanitizeClonedDocForPDF(clonedDoc);
 
           // Additional Gantt-specific enhancements in cloned DOM
+          const clonedGanttSection = clonedDoc.getElementById('section-cronograma');
+          if (clonedGanttSection) {
+            clonedGanttSection.style.width = `${totalWidthWithPadding}px`;
+            clonedGanttSection.style.minWidth = `${totalWidthWithPadding}px`;
+          }
+
           const clonedScroll = clonedDoc.querySelector('.gantt-container') as HTMLElement;
           const clonedGrid = clonedDoc.querySelector('.gantt-grid') as HTMLElement;
           if (clonedScroll) {
@@ -846,6 +884,9 @@ export default function App() {
       });
 
       // Restore original styles
+      element.style.width = origElWidth;
+      element.style.minWidth = origElMinWidth;
+
       if (scrollWrapper) {
         scrollWrapper.style.maxHeight = origMaxHeight;
         scrollWrapper.style.overflowY = origOverflowY;
