@@ -492,11 +492,14 @@ export default function App() {
       await new Promise(resolve => setTimeout(resolve, 150));
 
       // Capture canvas
-      const canvas = await html2canvas(element, {
+      const html2canvasFn = (html2canvas as any).default || html2canvas;
+      const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
         scale: 2,
         useCORS: true,
-        logging: false
+        logging: false,
+        scrollX: 0,
+        scrollY: 0
       });
 
       // Restore original styles
@@ -508,8 +511,9 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      // Generate PDF
-      const pdf = new jsPDF('l', 'mm', 'a4'); // landscape
+      // Generate PDF safely handling module variations
+      const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
+      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape
       const imgWidth = 297;
       const pageHeight = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -530,6 +534,7 @@ export default function App() {
       pdf.save('presupuesto_Nogales.pdf');
     } catch (error) {
       console.error('Error al exportar presupuesto a PDF:', error);
+      alert('Error al exportar presupuesto a PDF: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExportingPDF(null);
     }
@@ -573,11 +578,14 @@ export default function App() {
       // Wait a moment for layout reflow
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      const canvas = await html2canvas(element, {
+      const html2canvasFn = (html2canvas as any).default || html2canvas;
+      const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
         scale: 2,
         useCORS: true,
-        logging: false
+        logging: false,
+        scrollX: 0,
+        scrollY: 0
       });
 
       // Restore original styles
@@ -591,7 +599,8 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      const pdf = new jsPDF('l', 'mm', 'a4');
+      const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
+      const pdf = new jsPDFClass('l', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
@@ -613,6 +622,7 @@ export default function App() {
       pdf.save('flujo_de_caja_Nogales.pdf');
     } catch (error) {
       console.error('Error al exportar flujo de caja a PDF:', error);
+      alert('Error al exportar flujo de caja a PDF: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExportingPDF(null);
     }
@@ -666,11 +676,14 @@ export default function App() {
       await new Promise(resolve => setTimeout(resolve, 150));
 
       // Capture canvas
-      const canvas = await html2canvas(element, {
+      const html2canvasFn = (html2canvas as any).default || html2canvas;
+      const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
         scale: 2, // high quality
         useCORS: true,
-        logging: false
+        logging: false,
+        scrollX: 0,
+        scrollY: 0
       });
 
       // Restore original styles
@@ -688,7 +701,8 @@ export default function App() {
       });
 
       // Generate PDF
-      const pdf = new jsPDF('l', 'mm', 'a4');
+      const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
+      const pdf = new jsPDFClass('l', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth(); // 297
       const pageHeight = pdf.internal.pageSize.getHeight(); // 210
 
@@ -711,6 +725,7 @@ export default function App() {
       pdf.save('cronograma_Nogales.pdf');
     } catch (error) {
       console.error('Error al exportar cronograma a PDF:', error);
+      alert('Error al exportar cronograma a PDF: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExportingPDF(null);
     }
