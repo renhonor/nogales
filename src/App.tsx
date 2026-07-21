@@ -1615,17 +1615,19 @@ export default function App() {
             </table>
           </div>
 
-          {/* Totals footer bar: sits outside the <table> so it cannot affect table-fixed column widths */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
+          {/* Totals footer bar: sits outside the <table> so it cannot affect table-fixed column widths.
+              Uses explicit margins instead of CSS 'gap' because html2canvas does not reliably
+              render the gap property on grid/flex containers (it collapses to 0 in the PDF export). */}
+          <div className="flex">
+            <div className="flex-1 mr-3 bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
               <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Suma Materiales</p>
               <p className="text-sm font-black font-mono text-rose-400 mt-0.5">{fmtMoneda.format(calculations.totalMateriales)}</p>
             </div>
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
+            <div className="flex-1 mr-3 bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-3">
               <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Suma Mano de Obra</p>
               <p className="text-sm font-black font-mono text-emerald-400 mt-0.5">{fmtMoneda.format(calculations.totalManoObra)}</p>
             </div>
-            <div className="bg-slate-950/60 border border-emerald-500/40 rounded-xl px-4 py-3">
+            <div className="flex-1 bg-slate-950/60 border border-emerald-500/40 rounded-xl px-4 py-3">
               <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Total Consolidado</p>
               <p className="text-sm font-black font-mono text-yellow-400 mt-0.5">{fmtMoneda.format(calculations.totalProyecto)}</p>
             </div>
