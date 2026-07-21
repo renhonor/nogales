@@ -26,7 +26,8 @@ import {
   CheckCircle,
   Clock,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  Percent
 } from 'lucide-react';
 import { Partida, FlujoSemana } from './types';
 import { defaultPartidas } from './data';
@@ -52,11 +53,37 @@ export default function App() {
   // Editable Project Title
   const [projectTitle, setProjectTitle] = useState('Remodelación Nogales');
 
-  // Application data states
-  const [partidas, setPartidas] = useState<Partida[]>([]);
+  // Dual Budget Application Data States (Cliente vs Subcontratista)
+  const [partidasCliente, setPartidasCliente] = useState<Partida[]>([]);
+  const [partidasSubcontratista, setPartidasSubcontratista] = useState<Partida[] | null>(null);
+  const [activeViewMode, setActiveViewMode] = useState<'cliente' | 'subcontratista'>('cliente');
+  
+  // Factor de Conversión states
+  const [conversionFactor, setConversionFactor] = useState<number>(-30); // Default -30%
+  const [conversionApplyTo, setConversionApplyTo] = useState<'both' | 'mo' | 'mat'>('both');
+  const [showConversionModal, setShowConversionModal] = useState<boolean>(false);
+
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'local'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Active Partidas array according to selected view mode
+  const activePartidas = useMemo(() => {
+    if (activeViewMode === 'subcontratista') {
+      return partidasSubcontratista || partidasCliente;
+    }
+    return partidasCliente;
+  }, [activeViewMode, partidasCliente, partidasSubcontratista]);
+
+  // Derived Totals for quick view comparison
+  const totalCliente = useMemo(() => {
+    return partidasCliente.reduce((acc, p) => acc + p.mat + p.mo, 0);
+  }, [partidasCliente]);
+
+  const totalSubcontratista = useMemo(() => {
+    if (!partidasSubcontratista) return null;
+    return partidasSubcontratista.reduce((acc, p) => acc + p.mat + p.mo, 0);
+  }, [partidasSubcontratista]);
 
   // Search & Filtering States
   const [searchTerm, setSearchTerm] = useState('');
@@ -101,20 +128,34 @@ export default function App() {
   // Check for active session on mount
   useEffect(() => {
     const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
       if (data?.session) {
         setUser(data.session.user);
         cargarDatosUsuario(data.session.user.id);
       } else {
         // Try to load guest data if previously used
-        const localData = localStorage.getItem('nogales_guest_budget');
-        if (localData) {
+        const localDataV2 = localStorage.getItem('nogales_guest_budget_v2');
+        if (localDataV2) {
           try {
-            setPartidas(JSON.parse(localData));
+            const parsed = JSON.parse(localDataV2);
+            setPartidasCliente(parsed.cliente || defaultPartidas);
+            setPartidasSubcontratista(parsed.subcontratista || null);
+            if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
             setIsGuestMode(true);
             setSaveStatus('local');
           } catch (e) {
-            console.error('Error reading guest data', e);
+            console.error('Error reading guest data v2', e);
+          }
+        } else {
+          const legacyData = localStorage.getItem('nogales_guest_budget');
+          if (legacyData) {
+            try {
+              setPartidasCliente(JSON.parse(legacyData));
+              setIsGuestMode(true);
+              setSaveStatus('local');
+            } catch (e) {
+              console.error('Error reading legacy guest data', e);
+            }
           }
         }
         const localTitle = localStorage.getItem('nogales_project_title');
@@ -134,7 +175,8 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsGuestMode(false);
-        setPartidas([]);
+        setPartidasCliente([]);
+        setPartidasSubcontratista(null);
         setProjectTitle('Remodelación Nogales');
         setSaveStatus('idle');
       }
@@ -163,7 +205,25 @@ export default function App() {
       }
 
       if (data && data.contenido) {
-        setPartidas(data.contenido);
+        let clienteData: Partida[] = [];
+        if (Array.isArray(data.contenido)) {
+          clienteData = data.contenido;
+        } else if (data.contenido.cliente) {
+          clienteData = data.contenido.cliente;
+        } else {
+          clienteData = JSON.parse(JSON.stringify(defaultPartidas));
+        }
+
+        setPartidasCliente(clienteData);
+
+        if (data.contenido_subcontratista) {
+          setPartidasSubcontratista(data.contenido_subcontratista);
+        } else if (data.contenido && data.contenido.subcontratista) {
+          setPartidasSubcontratista(data.contenido.subcontratista);
+        } else {
+          setPartidasSubcontratista(null);
+        }
+
         if (data.titulo) {
           setProjectTitle(data.titulo);
         } else {
@@ -172,15 +232,22 @@ export default function App() {
         setSaveStatus('saved');
       } else {
         // First login, initialize user's table with the default dataset
+        const initialCliente = JSON.parse(JSON.stringify(defaultPartidas));
         const { error: insertError } = await supabase
           .from('presupuestos')
-          .insert({ user_id: userId, contenido: defaultPartidas, titulo: 'Remodelación Nogales' });
+          .insert({ 
+            user_id: userId, 
+            contenido: initialCliente, 
+            contenido_subcontratista: null,
+            titulo: 'Remodelación Nogales' 
+          });
         
         if (insertError) {
           console.error('Error creating initial user data', insertError);
           setSaveStatus('error');
         }
-        setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
+        setPartidasCliente(initialCliente);
+        setPartidasSubcontratista(null);
         setProjectTitle('Remodelación Nogales');
         setSaveStatus('saved');
       }
@@ -255,9 +322,11 @@ export default function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     localStorage.removeItem('nogales_guest_budget');
+    localStorage.removeItem('nogales_guest_budget_v2');
     setUser(null);
     setIsGuestMode(false);
-    setPartidas([]);
+    setPartidasCliente([]);
+    setPartidasSubcontratista(null);
     setSaveStatus('idle');
   };
 
@@ -265,16 +334,29 @@ export default function App() {
   const enterGuestMode = () => {
     setIsGuestMode(true);
     setAuthError(null);
-    const localData = localStorage.getItem('nogales_guest_budget');
-    if (localData) {
+    const localDataV2 = localStorage.getItem('nogales_guest_budget_v2');
+    if (localDataV2) {
       try {
-        setPartidas(JSON.parse(localData));
+        const parsed = JSON.parse(localDataV2);
+        setPartidasCliente(parsed.cliente || defaultPartidas);
+        setPartidasSubcontratista(parsed.subcontratista || null);
+        if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
       } catch (e) {
-        setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
+        setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
+        setPartidasSubcontratista(null);
       }
     } else {
-      setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
-      localStorage.setItem('nogales_guest_budget', JSON.stringify(defaultPartidas));
+      const legacyData = localStorage.getItem('nogales_guest_budget');
+      if (legacyData) {
+        try {
+          setPartidasCliente(JSON.parse(legacyData));
+        } catch (e) {
+          setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
+        }
+      } else {
+        setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
+      }
+      setPartidasSubcontratista(null);
     }
     
     const localTitle = localStorage.getItem('nogales_project_title');
@@ -286,13 +368,33 @@ export default function App() {
     setSaveStatus('local');
   };
 
-  // Programmed autosave (Debounce)
-  const persistChanges = (updatedPartidas: Partida[], updatedTitle?: string) => {
-    setPartidas(updatedPartidas);
+  // Programmed autosave (Debounce) supporting dual budget separation
+  const persistChanges = (
+    updatedPartidas: Partida[], 
+    targetMode: 'cliente' | 'subcontratista' = activeViewMode,
+    updatedTitle?: string
+  ) => {
+    let newCliente = partidasCliente;
+    let newSubcontratista = partidasSubcontratista;
+
+    if (targetMode === 'cliente') {
+      newCliente = updatedPartidas;
+      setPartidasCliente(updatedPartidas);
+    } else {
+      newSubcontratista = updatedPartidas;
+      setPartidasSubcontratista(updatedPartidas);
+    }
+
     const titleToSave = updatedTitle !== undefined ? updatedTitle : projectTitle;
 
+    const payload = {
+      cliente: newCliente,
+      subcontratista: newSubcontratista,
+      conversionFactor
+    };
+
     if (isGuestMode) {
-      localStorage.setItem('nogales_guest_budget', JSON.stringify(updatedPartidas));
+      localStorage.setItem('nogales_guest_budget_v2', JSON.stringify(payload));
       if (updatedTitle !== undefined) {
         localStorage.setItem('nogales_project_title', updatedTitle);
       }
@@ -312,14 +414,15 @@ export default function App() {
         const { error } = await supabase
           .from('presupuestos')
           .update({ 
-            contenido: updatedPartidas, 
+            contenido: newCliente, 
+            contenido_subcontratista: newSubcontratista,
             titulo: titleToSave,
             updated_at: new Date().toISOString() 
           })
           .eq('user_id', user.id);
 
         if (error) {
-          console.error('Error saving data', error);
+          console.error('Error saving data to Supabase', error);
           setSaveStatus('error');
         } else {
           setSaveStatus('saved');
@@ -340,46 +443,88 @@ export default function App() {
 
   // Edit budget item
   const handleEditItem = (index: number, field: keyof Partida, value: any) => {
-    const updated = [...partidas];
+    const currentList = activeViewMode === 'cliente' 
+      ? [...partidasCliente] 
+      : [...(partidasSubcontratista || partidasCliente)];
+
     if (field === 'inicio' || field === 'duracion') {
-      updated[index] = {
-        ...updated[index],
+      currentList[index] = {
+        ...currentList[index],
         [field]: Math.max(1, parseInt(value) || 1)
       };
     } else if (field === 'mat' || field === 'mo') {
-      updated[index] = {
-        ...updated[index],
+      currentList[index] = {
+        ...currentList[index],
         [field]: Math.max(0, parseFloat(value) || 0)
       };
     } else {
-      updated[index] = {
-        ...updated[index],
+      currentList[index] = {
+        ...currentList[index],
         [field]: value
       };
     }
-    persistChanges(updated);
+    persistChanges(currentList, activeViewMode);
   };
 
   // Add custom manual item
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = [...partidas, { ...newPartida }];
-    persistChanges(updated);
+    const currentList = activeViewMode === 'cliente' 
+      ? [...partidasCliente] 
+      : [...(partidasSubcontratista || partidasCliente)];
+
+    const updated = [...currentList, { ...newPartida }];
+    persistChanges(updated, activeViewMode);
     setShowAddModal(false);
   };
 
   // Delete budget item
   const handleDeleteItem = (index: number) => {
-    if (window.confirm('¿Está seguro de que desea eliminar esta partida?')) {
-      const updated = partidas.filter((_, idx) => idx !== index);
-      persistChanges(updated);
+    const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
+    if (window.confirm(`¿Está seguro de que desea eliminar esta partida del presupuesto de ${modeLabel}?`)) {
+      const currentList = activeViewMode === 'cliente' 
+        ? [...partidasCliente] 
+        : [...(partidasSubcontratista || partidasCliente)];
+      const updated = currentList.filter((_, idx) => idx !== index);
+      persistChanges(updated, activeViewMode);
     }
   };
 
-  // Export to CSV
+  // Apply Conversion Factor logic (Clones Cliente -> Subcontratista independently)
+  const handleApplyConversionFactor = () => {
+    const clonedCliente: Partida[] = JSON.parse(JSON.stringify(partidasCliente));
+    const factor = 1 + (conversionFactor / 100);
+
+    const convertedSubcontratista: Partida[] = clonedCliente.map((p) => {
+      let mat = p.mat;
+      let mo = p.mo;
+
+      if (conversionApplyTo === 'both' || conversionApplyTo === 'mat') {
+        mat = Math.round(p.mat * factor * 100) / 100;
+      }
+      if (conversionApplyTo === 'both' || conversionApplyTo === 'mo') {
+        mo = Math.round(p.mo * factor * 100) / 100;
+      }
+
+      return {
+        ...p,
+        mat,
+        mo
+      };
+    });
+
+    setPartidasSubcontratista(convertedSubcontratista);
+    setActiveViewMode('subcontratista');
+    setShowConversionModal(false);
+
+    // Persist changes directly
+    persistChanges(convertedSubcontratista, 'subcontratista');
+  };
+
+  // Export to CSV for active mode
   const handleExportCSV = () => {
     const headers = ['Especialidad', 'Sub-especialidad', 'Código', 'Nombre', 'Semana de Inicio', 'Duración (Semanas)', 'Costo Materiales (S/)', 'Costo Mano de Obra (S/)'];
-    const rows = partidas.map(p => [
+    const rows = activePartidas.map(p => [
       p.esp,
       p.subesp,
       p.codigo,
@@ -397,13 +542,14 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'presupuesto_ Nogales.csv');
+    const modeName = activeViewMode === 'cliente' ? 'Cliente' : 'Subcontratista';
+    link.setAttribute('download', `presupuesto_Nogales_${modeName}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Import from CSV
+  // Import from CSV for active mode
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -426,7 +572,6 @@ export default function App() {
         
         for (let i = startIdx; i < lines.length; i++) {
           const line = lines[i];
-          // simple CSV parser handling quoted comma values
           const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
           const cols = matches.map(col => col.replace(/^"|"$/g, '').trim());
           
@@ -445,8 +590,9 @@ export default function App() {
         }
         
         if (importedItems.length > 0) {
-          if (window.confirm(`Se procesaron ${importedItems.length} partidas. ¿Deseas reemplazar el presupuesto actual por este archivo?`)) {
-            persistChanges(importedItems);
+          const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
+          if (window.confirm(`Se procesaron ${importedItems.length} partidas. ¿Deseas reemplazar el presupuesto de ${modeLabel} por este archivo?`)) {
+            persistChanges(importedItems, activeViewMode);
           }
         } else {
           alert('No se pudieron procesar filas válidas del archivo CSV. Asegúrate de respetar la estructura de columnas.');
@@ -946,7 +1092,7 @@ export default function App() {
     let totalManoObra = 0;
     let maxSemana = 0;
 
-    partidas.forEach(p => {
+    activePartidas.forEach(p => {
       totalMateriales += p.mat;
       totalManoObra += p.mo;
       const endWeek = p.inicio + p.duracion - 1;
@@ -961,14 +1107,14 @@ export default function App() {
       totalProyecto: totalMateriales + totalManoObra,
       maxSemana: maxSemana || 26 // default to 26 weeks if empty
     };
-  }, [partidas]);
+  }, [activePartidas]);
 
   // Compute sub-totals per Specialty & Sub-specialty for collapsible group rendering
   const groupTotals = useMemo(() => {
     const specialtyTotals: Record<string, { mat: number, mo: number, total: number }> = {};
     const subSpecialtyTotals: Record<string, { mat: number, mo: number, total: number }> = {};
 
-    partidas.forEach(p => {
+    activePartidas.forEach(p => {
       const subKey = `${p.esp}-${p.subesp}`;
       const total = p.mat + p.mo;
 
@@ -988,7 +1134,7 @@ export default function App() {
     });
 
     return { specialtyTotals, subSpecialtyTotals };
-  }, [partidas]);
+  }, [activePartidas]);
 
   // Compute Weekly cash flow data
   const flujoSemanas = useMemo<FlujoSemana[]>(() => {
@@ -1000,7 +1146,7 @@ export default function App() {
       total: 0
     }));
 
-    partidas.forEach(p => {
+    activePartidas.forEach(p => {
       if (p.duracion > 0 && p.inicio > 0) {
         const rateMat = p.mat / p.duracion;
         const rateMo = p.mo / p.duracion;
@@ -1015,17 +1161,17 @@ export default function App() {
     });
 
     return array;
-  }, [partidas, calculations.maxSemana]);
+  }, [activePartidas, calculations.maxSemana]);
 
   // Unique lists of specialties for filtering
   const specialties = useMemo(() => {
-    const list = new Set(partidas.map(p => p.esp));
+    const list = new Set(activePartidas.map(p => p.esp));
     return Array.from(list);
-  }, [partidas]);
+  }, [activePartidas]);
 
   // Filtered list of budget items
   const filteredPartidasWithOriginalIndex = useMemo(() => {
-    return partidas
+    return activePartidas
       .map((p, originalIndex) => ({ ...p, originalIndex }))
       .filter(p => {
         const matchesSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1034,7 +1180,7 @@ export default function App() {
         const matchesSpecialty = selectedSpecialty === 'all' || p.esp === selectedSpecialty;
         return matchesSearch && matchesSpecialty;
       });
-  }, [partidas, searchTerm, selectedSpecialty]);
+  }, [activePartidas, searchTerm, selectedSpecialty]);
 
   // Grouped filtered items for rendering
   const groupedPartidas = useMemo(() => {
@@ -1055,8 +1201,9 @@ export default function App() {
 
   // Reset budget back to defaults
   const handleResetToDefaults = () => {
-    if (window.confirm('¿Está seguro de restablecer todos los valores al presupuesto inicial del proyecto? Perderá los cambios no guardados.')) {
-      persistChanges(JSON.parse(JSON.stringify(defaultPartidas)));
+    const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
+    if (window.confirm(`¿Está seguro de restablecer todos los valores del presupuesto de ${modeLabel} al presupuesto inicial? Perderá los cambios no guardados.`)) {
+      persistChanges(JSON.parse(JSON.stringify(defaultPartidas)), activeViewMode);
     }
   };
 
@@ -1221,7 +1368,7 @@ export default function App() {
                   value={projectTitle}
                   onChange={(e) => {
                     setProjectTitle(e.target.value);
-                    persistChanges(partidas, e.target.value);
+                    persistChanges(activePartidas, activeViewMode, e.target.value);
                   }}
                   className="bg-slate-950/50 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-extrabold border border-dashed border-slate-700 hover:border-slate-500 focus:border-emerald-500 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500/10 transition-all text-xs md:text-sm max-w-[180px] sm:max-w-[240px] md:max-w-[320px]"
                   placeholder="Remodelación Nogales"
@@ -1302,8 +1449,83 @@ export default function App() {
         </div>
       )}
 
+      {/* Budget Mode Selector Bar & Conversion Factor Trigger */}
+      <div className="px-4 pt-4 md:px-8 max-w-[1800px] w-full mx-auto" data-html2canvas-ignore="true">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 md:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xl">
+          
+          {/* Left: Active Budget Tabs */}
+          <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800/80 overflow-x-auto">
+            <button
+              onClick={() => setActiveViewMode('cliente')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
+                activeViewMode === 'cliente'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950/60 ring-1 ring-emerald-400/50'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <span className="text-sm">🏢</span>
+              <span>PRESUPUESTO CLIENTE</span>
+              <span className="text-[10px] font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-emerald-500/30 text-emerald-300">
+                {fmtMoneda.format(totalCliente)}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (!partidasSubcontratista) {
+                  setShowConversionModal(true);
+                } else {
+                  setActiveViewMode('subcontratista');
+                }
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
+                activeViewMode === 'subcontratista'
+                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-950/60 ring-1 ring-amber-400/50'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <span className="text-sm">🛠️</span>
+              <span>PRESUPUESTO SUBCONTRATISTA</span>
+              {partidasSubcontratista && totalSubcontratista !== null ? (
+                <span className="text-[10px] font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-amber-500/30 text-amber-300">
+                  {fmtMoneda.format(totalSubcontratista)}
+                </span>
+              ) : (
+                <span className="text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-mono uppercase tracking-wider">
+                  Sin Generar
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Right: Conversion Button & Comparison badge */}
+          <div className="flex items-center gap-3 flex-wrap justify-between md:justify-end">
+            {partidasSubcontratista && totalSubcontratista !== null && (
+              <div className="bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2 text-xs font-mono">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Margen / Diferencia:</span>
+                <span className={`font-black ${totalCliente >= totalSubcontratista ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {fmtMoneda.format(totalCliente - totalSubcontratista)}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  ({(((totalCliente - totalSubcontratista) / (totalCliente || 1)) * 100).toFixed(1)}%)
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowConversionModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Percent className="w-4 h-4 text-slate-950" />
+              <span>Factor de Conversión</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
       {/* 3. Metrics Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4 pt-6 md:px-8 max-w-[1800px] w-full mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4 pt-4 md:px-8 max-w-[1800px] w-full mx-auto">
         <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800/80 rounded-xl p-4.5 flex items-center justify-between shadow-lg hover:border-emerald-500/30 transition-all premium-border group">
           <div>
             <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold font-display">Presupuesto Consolidado</p>
@@ -1352,10 +1574,21 @@ export default function App() {
         <section id="section-presupuesto" className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 md:p-6 shadow-2xl space-y-4 premium-glow">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold flex items-center gap-2 font-display text-white">
-                <Layers className="w-5 h-5 text-emerald-400" />
-                1. Matriz de Presupuesto Consolidado
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold flex items-center gap-2 font-display text-white">
+                  <Layers className="w-5 h-5 text-emerald-400" />
+                  1. Matriz de Presupuesto Consolidado
+                </h2>
+                {activeViewMode === 'subcontratista' ? (
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black rounded-md uppercase tracking-wider font-mono">
+                    Modo Subcontratista
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black rounded-md uppercase tracking-wider font-mono">
+                    Modo Cliente
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">Control de costos y semanas de ejecución por ambientes y acabados</p>
             </div>
             
@@ -2081,7 +2314,7 @@ export default function App() {
                 })}
 
                 {/* TASK ITEMS ROWS */}
-                {partidas.map((p, pIdx) => {
+                {activePartidas.map((p, pIdx) => {
                   const total = p.mat + p.mo;
                   if (total <= 0) return null;
 
@@ -2342,6 +2575,132 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Factor de Conversión Modal */}
+      {showConversionModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-html2canvas-ignore="true">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-extrabold text-amber-400 flex items-center gap-2 font-display">
+                <Percent className="w-5 h-5 text-amber-400" />
+                Factor de Conversión (Subcontratista)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowConversionModal(false)}
+                className="text-slate-500 hover:text-slate-300 text-sm font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Aplica una reducción o ampliación porcentual a partir del <strong>Presupuesto del Cliente</strong> para generar o actualizar el <strong>Presupuesto del Subcontratista</strong>.
+            </p>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200/90 leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-amber-400" />
+                Clonación Profunda e Independiente:
+              </p>
+              <p className="text-[11px] text-slate-300">
+                Una vez generado el presupuesto del subcontratista, ambos quedan totalmente separados. Editar el presupuesto del cliente nunca modificará el del subcontratista y viceversa.
+              </p>
+            </div>
+
+            <div className="space-y-4 pt-1">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Porcentaje de Conversión (%):
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={conversionFactor}
+                      onChange={(e) => setConversionFactor(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30 pr-8"
+                      placeholder="-30"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+                  </div>
+                  <div className="text-xs font-mono font-bold text-slate-300">
+                    {conversionFactor < 0 ? (
+                      <span className="text-emerald-400">Reducción del {Math.abs(conversionFactor)}%</span>
+                    ) : conversionFactor > 0 ? (
+                      <span className="text-amber-400">Incremento del {conversionFactor}%</span>
+                    ) : (
+                      <span className="text-slate-400">Sin variación (0%)</span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Ejemplo: Ingresa <strong>-30</strong> para aplicar un 30% de reducción (multiplica cada costo por 0.70).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Aplicar Factor A:
+                </label>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setConversionApplyTo('both')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
+                      conversionApplyTo === 'both'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Ambos (Mat. y MO)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConversionApplyTo('mo')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
+                      conversionApplyTo === 'mo'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Solo Mano de Obra
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConversionApplyTo('mat')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
+                      conversionApplyTo === 'mat'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Solo Materiales
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConversionModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyConversionFactor}
+                className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-lg shadow-amber-950 cursor-pointer"
+              >
+                {partidasSubcontratista ? 'Re-Generar Presupuesto Subcontratista' : 'Generar Presupuesto Subcontratista'}
+              </button>
+            </div>
           </div>
         </div>
       )}
