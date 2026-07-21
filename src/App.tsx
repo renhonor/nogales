@@ -1612,6 +1612,23 @@ export default function App() {
                   })
                 )}
               </tbody>
+              <tfoot>
+                <tr className="bg-slate-900 border-t-2 border-emerald-500/60 sticky bottom-0 z-20">
+                  <td colSpan={4} className="p-2.5 text-right text-[11px] font-black uppercase tracking-wider text-slate-300 font-display">
+                    Total General del Presupuesto
+                  </td>
+                  <td className="p-2.5 text-right font-mono text-[12px] font-black text-rose-400">
+                    {fmtMoneda.format(calculations.totalMateriales)}
+                  </td>
+                  <td className="p-2.5 text-right font-mono text-[12px] font-black text-emerald-400">
+                    {fmtMoneda.format(calculations.totalManoObra)}
+                  </td>
+                  <td className="p-2.5 text-right font-mono text-[13px] font-black text-yellow-400">
+                    {fmtMoneda.format(calculations.totalProyecto)}
+                  </td>
+                  <td className="p-2.5" data-html2canvas-ignore="true"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </section>
