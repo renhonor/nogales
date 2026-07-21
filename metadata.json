@@ -1,5 +1,5 @@
 {
-  "name": "Presupuesto Remodelación Nogales",
+  "name": "Gestión de Obra 26.1",
   "description": "Plataforma interactiva para el control de presupuestos, flujo de caja y cronograma de Gantt de remodelaciones, con persistencia y sincronización determinista.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
