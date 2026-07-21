@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #020617;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b1329;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}
+
+/* Visual Glow and Card Enhancements */
+.premium-glow {
+  box-shadow: 0 0 40px -15px rgba(16, 185, 129, 0.15);
+}
+
+.premium-border {
+  border-color: rgba(51, 65, 85, 0.4);
+}
+
+/* Sleek animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.8;
+    filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.4));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.8));
+  }
+}
+
+.glow-active {
+  animation: pulseGlow 2s infinite;
+}
