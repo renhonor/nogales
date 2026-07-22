@@ -112,44 +112,12 @@ export default function App() {
       if (data?.session) {
         setUser(data.session.user);
         cargarDatosUsuario(data.session.user.id);
-      } else {
-        // Try to load guest data if previously used
-        const localDataV2 = localStorage.getItem('nogales_guest_budget_v2');
-        if (localDataV2) {
-          try {
-            const parsed = JSON.parse(localDataV2);
-            if (Array.isArray(parsed)) {
-              setPartidas(parsed);
-            } else {
-              setPartidas(parsed.partidas || parsed.cliente || defaultPartidas);
-              if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
-            }
-            setIsGuestMode(true);
-            setSaveStatus('local');
-          } catch (e) {
-            console.error('Error reading guest data v2', e);
-          }
-        } else {
-          const legacyData = localStorage.getItem('nogales_guest_budget');
-          if (legacyData) {
-            try {
-              setPartidas(JSON.parse(legacyData));
-              setIsGuestMode(true);
-              setSaveStatus('local');
-            } catch (e) {
-              console.error('Error reading legacy guest data', e);
-            }
-          } else {
-            setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
-            setIsGuestMode(true);
-            setSaveStatus('local');
-          }
-        }
-        const localTitle = localStorage.getItem('nogales_project_title');
-        if (localTitle) {
-          setProjectTitle(localTitle);
-        }
       }
+      // No active session: leave user=null and isGuestMode=false so the
+      // login screen is shown. Guest Mode must only ever be entered
+      // explicitly (see enterGuestMode), never automatically — it used to
+      // silently load the real project budget (defaultPartidas) for any
+      // unauthenticated visitor, with no login prompt at all.
     };
     checkSession();
 
