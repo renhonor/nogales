@@ -1957,24 +1957,34 @@ export default function App() {
                       <line x1="80" y1="290" x2={chartWidth - 25} y2="290" stroke="#334155" strokeWidth="2" />
                     </svg>
 
-                    {/* 3 Detail Rows Table Underneath */}
+                    {/* 3 Detail Rows Table Underneath.
+                        NOTE: colors here are set via inline hex styles (not Tailwind
+                        color utilities) on purpose. Tailwind v4 compiles color utilities
+                        using oklch()/color-mix(), which the PDF/JPG export has to convert
+                        to plain rgb() at capture time (see sanitizeClonedDocForPDF). That
+                        conversion occasionally lost the race on the very first export of
+                        this specific section. Plain hex values need no conversion, so they
+                        always render correctly, even on the very first click. */}
                     <div
-                      className="mt-4 border border-slate-800/50 rounded-xl bg-slate-950/40 text-[9px] font-mono"
-                      style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px` }}
+                      className="mt-4 border rounded-xl text-[9px] font-mono"
+                      style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px`, borderColor: 'rgba(30,41,59,0.5)', backgroundColor: 'rgba(2,6,23,0.4)' }}
                     >
                       <table className="w-full table-fixed border-separate border-spacing-0">
                         <thead>
-                          <tr className="bg-slate-900 text-slate-400 uppercase tracking-wider">
-                            <th className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold select-none rounded-tl-xl">
+                          <tr className="uppercase tracking-wider" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>
+                            <th
+                              className="sticky left-0 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b font-bold select-none rounded-tl-xl"
+                              style={{ backgroundColor: '#0f172a', borderColor: '#1e293b' }}
+                            >
                               Concepto
                             </th>
                             {flujoSemanas.map((s, idx) => (
                               <th
                                 key={s.sem}
-                                className={`p-2 text-center border-b border-r border-slate-800 last:border-r-0 font-extrabold ${
+                                className={`p-2 text-center border-b border-r last:border-r-0 font-extrabold ${
                                   idx === flujoSemanas.length - 1 ? 'rounded-tr-xl' : ''
                                 }`}
-                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, borderColor: '#1e293b' }}
                               >
                                 S{s.sem}
                               </th>
@@ -1983,44 +1993,53 @@ export default function App() {
                         </thead>
                         <tbody>
                           <tr className="hover:bg-slate-900/30">
-                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold text-emerald-400">
+                            <td
+                              className="sticky left-0 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b font-bold rounded-bl-none"
+                              style={{ backgroundColor: '#020617', borderColor: '#1e293b', color: '#34d399' }}
+                            >
                               M. Obra
                             </td>
                             {flujoSemanas.map((s, idx) => (
                               <td
                                 key={idx}
-                                className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-emerald-300"
-                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                                className="p-2 text-center border-r border-b last:border-r-0"
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, borderColor: 'rgba(30,41,59,0.4)', color: '#6ee7b7' }}
                               >
                                 {s.mo > 0 ? `S/${Math.round(s.mo).toLocaleString()}` : '—'}
                               </td>
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-900/30">
-                            <td className="sticky left-0 bg-slate-950 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 font-bold text-rose-400">
+                            <td
+                              className="sticky left-0 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b font-bold"
+                              style={{ backgroundColor: '#020617', borderColor: '#1e293b', color: '#fb7185' }}
+                            >
                               Materiales
                             </td>
                             {flujoSemanas.map((s, idx) => (
                               <td
                                 key={idx}
-                                className="p-2 text-center border-r border-b border-slate-800/40 last:border-r-0 text-rose-300"
-                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                                className="p-2 text-center border-r border-b last:border-r-0"
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, borderColor: 'rgba(30,41,59,0.4)', color: '#fda4af' }}
                               >
                                 {s.mat > 0 ? `S/${Math.round(s.mat).toLocaleString()}` : '—'}
                               </td>
                             ))}
                           </tr>
-                          <tr className="bg-slate-900/40 font-bold hover:bg-slate-900/60">
-                            <td className="sticky left-0 bg-slate-900 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b border-slate-800 text-yellow-400 font-extrabold rounded-bl-xl">
+                          <tr className="font-bold" style={{ backgroundColor: 'rgba(15,23,42,0.4)' }}>
+                            <td
+                              className="sticky left-0 z-20 p-2 text-left w-[75px] min-w-[75px] max-w-[75px] border-r border-b font-extrabold rounded-bl-xl"
+                              style={{ backgroundColor: '#0f172a', borderColor: '#1e293b', color: '#facc15' }}
+                            >
                               Total Sem.
                             </td>
                             {flujoSemanas.map((s, idx) => (
                               <td
                                 key={idx}
-                                className={`p-2 text-center border-r border-b border-slate-800 last:border-r-0 text-yellow-300 font-extrabold ${
+                                className={`p-2 text-center border-r border-b last:border-r-0 font-extrabold ${
                                   idx === flujoSemanas.length - 1 ? 'rounded-br-xl' : ''
                                 }`}
-                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px` }}
+                                style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, borderColor: '#1e293b', color: '#fde047' }}
                               >
                                 {s.total > 0 ? `S/${Math.round(s.total).toLocaleString()}` : '—'}
                               </td>
