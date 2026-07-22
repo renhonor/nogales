@@ -53,10 +53,8 @@ export default function App() {
   // Editable Project Title
   const [projectTitle, setProjectTitle] = useState('Gestión de Obra 26.1');
 
-  // Dual Budget Application Data States (Cliente vs Subcontratista)
-  const [partidasCliente, setPartidasCliente] = useState<Partida[]>([]);
-  const [partidasSubcontratista, setPartidasSubcontratista] = useState<Partida[] | null>(null);
-  const [activeViewMode, setActiveViewMode] = useState<'cliente' | 'subcontratista'>('cliente');
+  // Single Budget Application Data State
+  const [partidas, setPartidas] = useState<Partida[]>([]);
   
   // Factor de Conversión states
   const [conversionFactor, setConversionFactor] = useState<number>(-30); // Default -30%
@@ -66,24 +64,6 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'local'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Active Partidas array according to selected view mode
-  const activePartidas = useMemo(() => {
-    if (activeViewMode === 'subcontratista') {
-      return partidasSubcontratista || partidasCliente;
-    }
-    return partidasCliente;
-  }, [activeViewMode, partidasCliente, partidasSubcontratista]);
-
-  // Derived Totals for quick view comparison
-  const totalCliente = useMemo(() => {
-    return partidasCliente.reduce((acc, p) => acc + p.mat + p.mo, 0);
-  }, [partidasCliente]);
-
-  const totalSubcontratista = useMemo(() => {
-    if (!partidasSubcontratista) return null;
-    return partidasSubcontratista.reduce((acc, p) => acc + p.mat + p.mo, 0);
-  }, [partidasSubcontratista]);
 
   // Search & Filtering States
   const [searchTerm, setSearchTerm] = useState('');
@@ -117,7 +97,7 @@ export default function App() {
     y: number;
   } | null>(null);
 
-  // PDF exporting state
+  // PDF & Image exporting state
   const [exportingPDF, setExportingPDF] = useState<string | null>(null);
 
   // Format currencies with Soles (S/) locale
@@ -138,9 +118,12 @@ export default function App() {
         if (localDataV2) {
           try {
             const parsed = JSON.parse(localDataV2);
-            setPartidasCliente(parsed.cliente || defaultPartidas);
-            setPartidasSubcontratista(parsed.subcontratista || null);
-            if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
+            if (Array.isArray(parsed)) {
+              setPartidas(parsed);
+            } else {
+              setPartidas(parsed.partidas || parsed.cliente || defaultPartidas);
+              if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
+            }
             setIsGuestMode(true);
             setSaveStatus('local');
           } catch (e) {
@@ -150,12 +133,16 @@ export default function App() {
           const legacyData = localStorage.getItem('nogales_guest_budget');
           if (legacyData) {
             try {
-              setPartidasCliente(JSON.parse(legacyData));
+              setPartidas(JSON.parse(legacyData));
               setIsGuestMode(true);
               setSaveStatus('local');
             } catch (e) {
               console.error('Error reading legacy guest data', e);
             }
+          } else {
+            setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
+            setIsGuestMode(true);
+            setSaveStatus('local');
           }
         }
         const localTitle = localStorage.getItem('nogales_project_title');
@@ -175,9 +162,8 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsGuestMode(false);
-        setPartidasCliente([]);
-        setPartidasSubcontratista(null);
-        setProjectTitle('Remodelación Nogales');
+        setPartidas([]);
+        setProjectTitle('Gestión de Obra 26.1');
         setSaveStatus('idle');
       }
     });
@@ -205,45 +191,38 @@ export default function App() {
       }
 
       if (data && data.contenido) {
-        let clienteData: Partida[] = [];
+        let loadedPartidas: Partida[] = [];
         if (Array.isArray(data.contenido)) {
-          clienteData = data.contenido;
-          setPartidasSubcontratista(null);
+          loadedPartidas = data.contenido;
         } else if (typeof data.contenido === 'object') {
-          if (Array.isArray(data.contenido.cliente)) {
-            clienteData = data.contenido.cliente;
+          if (Array.isArray(data.contenido.partidas)) {
+            loadedPartidas = data.contenido.partidas;
+          } else if (Array.isArray(data.contenido.cliente)) {
+            loadedPartidas = data.contenido.cliente;
           } else {
-            clienteData = JSON.parse(JSON.stringify(defaultPartidas));
-          }
-
-          if (Array.isArray(data.contenido.subcontratista)) {
-            setPartidasSubcontratista(data.contenido.subcontratista);
-          } else {
-            setPartidasSubcontratista(null);
+            loadedPartidas = JSON.parse(JSON.stringify(defaultPartidas));
           }
 
           if (typeof data.contenido.conversionFactor === 'number') {
             setConversionFactor(data.contenido.conversionFactor);
           }
         } else {
-          clienteData = JSON.parse(JSON.stringify(defaultPartidas));
-          setPartidasSubcontratista(null);
+          loadedPartidas = JSON.parse(JSON.stringify(defaultPartidas));
         }
 
-        setPartidasCliente(clienteData);
+        setPartidas(loadedPartidas);
 
         if (data.titulo) {
           setProjectTitle(data.titulo);
         } else {
-          setProjectTitle('Remodelación Nogales');
+          setProjectTitle('Gestión de Obra 26.1');
         }
         setSaveStatus('saved');
       } else {
-        // First login, initialize user's table with the default dataset
-        const initialCliente = JSON.parse(JSON.stringify(defaultPartidas));
+        // First login, initialize user's table with default dataset
+        const initialPartidas = JSON.parse(JSON.stringify(defaultPartidas));
         const initialPayload = {
-          cliente: initialCliente,
-          subcontratista: null,
+          partidas: initialPartidas,
           conversionFactor: -30
         };
         const { error: insertError } = await supabase
@@ -251,16 +230,15 @@ export default function App() {
           .insert({ 
             user_id: userId, 
             contenido: initialPayload, 
-            titulo: 'Remodelación Nogales' 
+            titulo: 'Gestión de Obra 26.1' 
           });
         
         if (insertError) {
           console.error('Error creating initial user data', insertError);
           setSaveStatus('error');
         }
-        setPartidasCliente(initialCliente);
-        setPartidasSubcontratista(null);
-        setProjectTitle('Remodelación Nogales');
+        setPartidas(initialPartidas);
+        setProjectTitle('Gestión de Obra 26.1');
         setSaveStatus('saved');
       }
     } catch (e) {
@@ -337,8 +315,7 @@ export default function App() {
     localStorage.removeItem('nogales_guest_budget_v2');
     setUser(null);
     setIsGuestMode(false);
-    setPartidasCliente([]);
-    setPartidasSubcontratista(null);
+    setPartidas([]);
     setSaveStatus('idle');
   };
 
@@ -350,58 +327,47 @@ export default function App() {
     if (localDataV2) {
       try {
         const parsed = JSON.parse(localDataV2);
-        setPartidasCliente(parsed.cliente || defaultPartidas);
-        setPartidasSubcontratista(parsed.subcontratista || null);
-        if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
+        if (Array.isArray(parsed)) {
+          setPartidas(parsed);
+        } else {
+          setPartidas(parsed.partidas || parsed.cliente || defaultPartidas);
+          if (parsed.conversionFactor) setConversionFactor(parsed.conversionFactor);
+        }
       } catch (e) {
-        setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
-        setPartidasSubcontratista(null);
+        setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
       }
     } else {
       const legacyData = localStorage.getItem('nogales_guest_budget');
       if (legacyData) {
         try {
-          setPartidasCliente(JSON.parse(legacyData));
+          setPartidas(JSON.parse(legacyData));
         } catch (e) {
-          setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
+          setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
         }
       } else {
-        setPartidasCliente(JSON.parse(JSON.stringify(defaultPartidas)));
+        setPartidas(JSON.parse(JSON.stringify(defaultPartidas)));
       }
-      setPartidasSubcontratista(null);
     }
     
     const localTitle = localStorage.getItem('nogales_project_title');
     if (localTitle) {
       setProjectTitle(localTitle);
     } else {
-      setProjectTitle('Remodelación Nogales');
+      setProjectTitle('Gestión de Obra 26.1');
     }
     setSaveStatus('local');
   };
 
-  // Programmed autosave (Debounce) supporting dual budget separation
+  // Programmed autosave (Debounce) supporting single budget
   const persistChanges = (
     updatedPartidas: Partida[], 
-    targetMode: 'cliente' | 'subcontratista' = activeViewMode,
     updatedTitle?: string
   ) => {
-    let newCliente = partidasCliente;
-    let newSubcontratista = partidasSubcontratista;
-
-    if (targetMode === 'cliente') {
-      newCliente = updatedPartidas;
-      setPartidasCliente(updatedPartidas);
-    } else {
-      newSubcontratista = updatedPartidas;
-      setPartidasSubcontratista(updatedPartidas);
-    }
-
+    setPartidas(updatedPartidas);
     const titleToSave = updatedTitle !== undefined ? updatedTitle : projectTitle;
 
     const payload = {
-      cliente: newCliente,
-      subcontratista: newSubcontratista,
+      partidas: updatedPartidas,
       conversionFactor
     };
 
@@ -454,9 +420,7 @@ export default function App() {
 
   // Edit budget item
   const handleEditItem = (index: number, field: keyof Partida, value: any) => {
-    const currentList = activeViewMode === 'cliente' 
-      ? [...partidasCliente] 
-      : [...(partidasSubcontratista || partidasCliente)];
+    const currentList = [...partidas];
 
     if (field === 'inicio' || field === 'duracion') {
       currentList[index] = {
@@ -474,39 +438,30 @@ export default function App() {
         [field]: value
       };
     }
-    persistChanges(currentList, activeViewMode);
+    persistChanges(currentList);
   };
 
   // Add custom manual item
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
-    const currentList = activeViewMode === 'cliente' 
-      ? [...partidasCliente] 
-      : [...(partidasSubcontratista || partidasCliente)];
-
-    const updated = [...currentList, { ...newPartida }];
-    persistChanges(updated, activeViewMode);
+    const updated = [...partidas, { ...newPartida }];
+    persistChanges(updated);
     setShowAddModal(false);
   };
 
   // Delete budget item
   const handleDeleteItem = (index: number) => {
-    const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
-    if (window.confirm(`¿Está seguro de que desea eliminar esta partida del presupuesto de ${modeLabel}?`)) {
-      const currentList = activeViewMode === 'cliente' 
-        ? [...partidasCliente] 
-        : [...(partidasSubcontratista || partidasCliente)];
-      const updated = currentList.filter((_, idx) => idx !== index);
-      persistChanges(updated, activeViewMode);
+    if (window.confirm('¿Está seguro de que desea eliminar esta partida del presupuesto?')) {
+      const updated = partidas.filter((_, idx) => idx !== index);
+      persistChanges(updated);
     }
   };
 
-  // Apply Conversion Factor logic (Clones Cliente -> Subcontratista independently)
+  // Apply Conversion Factor logic (Scales the single budget directly in-place)
   const handleApplyConversionFactor = () => {
-    const clonedCliente: Partida[] = JSON.parse(JSON.stringify(partidasCliente));
     const factor = 1 + (conversionFactor / 100);
 
-    const convertedSubcontratista: Partida[] = clonedCliente.map((p) => {
+    const updatedPartidas: Partida[] = partidas.map((p) => {
       let mat = p.mat;
       let mo = p.mo;
 
@@ -524,18 +479,17 @@ export default function App() {
       };
     });
 
-    setPartidasSubcontratista(convertedSubcontratista);
-    setActiveViewMode('subcontratista');
+    setPartidas(updatedPartidas);
     setShowConversionModal(false);
 
     // Persist changes directly
-    persistChanges(convertedSubcontratista, 'subcontratista');
+    persistChanges(updatedPartidas);
   };
 
-  // Export to CSV for active mode
+  // Export to CSV
   const handleExportCSV = () => {
     const headers = ['Especialidad', 'Sub-especialidad', 'Código', 'Nombre', 'Semana de Inicio', 'Duración (Semanas)', 'Costo Materiales (S/)', 'Costo Mano de Obra (S/)'];
-    const rows = activePartidas.map(p => [
+    const rows = partidas.map(p => [
       p.esp,
       p.subesp,
       p.codigo,
@@ -553,14 +507,13 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    const modeName = activeViewMode === 'cliente' ? 'Cliente' : 'Subcontratista';
-    link.setAttribute('download', `presupuesto_Nogales_${modeName}.csv`);
+    link.setAttribute('download', `presupuesto_${projectTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Import from CSV for active mode
+  // Import from CSV
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -601,9 +554,8 @@ export default function App() {
         }
         
         if (importedItems.length > 0) {
-          const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
-          if (window.confirm(`Se procesaron ${importedItems.length} partidas. ¿Deseas reemplazar el presupuesto de ${modeLabel} por este archivo?`)) {
-            persistChanges(importedItems, activeViewMode);
+          if (window.confirm(`Se procesaron ${importedItems.length} partidas. ¿Deseas reemplazar el presupuesto por este archivo?`)) {
+            persistChanges(importedItems);
           }
         } else {
           alert('No se pudieron procesar filas válidas del archivo CSV. Asegúrate de respetar la estructura de columnas.');
@@ -723,7 +675,7 @@ export default function App() {
     });
   };
 
-  // Export functions to PDF using jsPDF and html2canvas-pro
+  // Export Presupuesto in A4 Vertical Format (Portrait)
   const exportPresupuestoPDF = async () => {
     if (exportingPDF) return;
     setExportingPDF('presupuesto');
@@ -733,7 +685,6 @@ export default function App() {
 
       const scrollWrapper = element.querySelector('.budget-table-container') as HTMLElement;
       
-      // Save original styles for expansion
       let origMaxHeight = '';
       let origOverflowY = '';
       if (scrollWrapper) {
@@ -743,7 +694,6 @@ export default function App() {
         scrollWrapper.style.overflowY = 'visible';
       }
 
-      // Temporarily change sticky elements to static so they render inline in the grid/table
       const stickyEls = element.querySelectorAll('.sticky');
       const originalStickies: { el: HTMLElement; position: string }[] = [];
       stickyEls.forEach((el: any) => {
@@ -751,14 +701,12 @@ export default function App() {
         el.style.position = 'static';
       });
 
-      // Wait a brief moment for layout reflow
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Capture canvas
       const html2canvasFn = (html2canvas as any).default || html2canvas;
       const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
-        scale: 2,
+        scale: 2.5,
         useCORS: true,
         logging: false,
         scrollX: 0,
@@ -768,7 +716,6 @@ export default function App() {
         }
       });
 
-      // Restore original styles
       if (scrollWrapper) {
         scrollWrapper.style.maxHeight = origMaxHeight;
         scrollWrapper.style.overflowY = origOverflowY;
@@ -777,20 +724,19 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      // Generate PDF with page margins and crisp scaling
+      // Generate PDF in A4 Vertical (Portrait)
       const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
-      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape (297mm x 210mm)
-      const margin = 10;
-      const printableWidth = 297 - (margin * 2); // 277mm
-      const printableHeight = 210 - (margin * 2); // 190mm
+      const pdf = new jsPDFClass('p', 'mm', 'a4'); // 'p' = portrait (210mm x 297mm)
+      const margin = 5; // minimal margins (5mm on all 4 sides)
+      const printableWidth = 210 - (margin * 2); // 200mm
+      const printableHeight = 297 - (margin * 2); // 287mm
 
       const imgWidth = printableWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       const imgData = canvas.toDataURL('image/png');
 
       if (imgHeight <= printableHeight) {
-        const yPos = margin + (printableHeight - imgHeight) / 2;
-        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
       } else {
         let heightLeft = imgHeight;
         let position = margin;
@@ -806,7 +752,7 @@ export default function App() {
         }
       }
 
-      pdf.save('presupuesto_Nogales.pdf');
+      pdf.save(`presupuesto_${projectTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_A4.pdf`);
     } catch (error) {
       console.error('Error al exportar presupuesto a PDF:', error);
       alert('Error al exportar presupuesto a PDF: ' + (error instanceof Error ? error.message : String(error)));
@@ -815,20 +761,18 @@ export default function App() {
     }
   };
 
-  const exportFlujoPDF = async () => {
+  // Export Flujo de Caja as high-resolution JPG (single page)
+  const exportFlujoJPG = async () => {
     if (exportingPDF) return;
-    setExportingPDF('flujo');
+    setExportingPDF('flujo-jpg');
     try {
       const element = document.getElementById('section-flujocaja');
       if (!element) return;
 
       const scrollWrapper = element.querySelector('.cashflow-container') as HTMLElement;
-      
-      // Calculate chart width based on week count
       const chartWidth = 75 + (flujoSemanas.length || 1) * 60 + 45;
       const totalWidthWithPadding = chartWidth + 48;
 
-      // Save original styles for full viewport capture
       const origElWidth = element.style.width;
       const origElMinWidth = element.style.minWidth;
       element.style.width = `${totalWidthWithPadding}px`;
@@ -846,7 +790,6 @@ export default function App() {
         origWidth = scrollWrapper.style.width;
         origMinWidth = scrollWrapper.style.minWidth;
 
-        // Force full expansion
         scrollWrapper.style.maxHeight = 'none';
         scrollWrapper.style.overflowY = 'visible';
         scrollWrapper.style.overflowX = 'visible';
@@ -854,7 +797,6 @@ export default function App() {
         scrollWrapper.style.minWidth = `${chartWidth}px`;
       }
 
-      // Temporarily change sticky elements to static so they render inline in html2canvas
       const stickyEls = element.querySelectorAll('.sticky');
       const originalStickies: { el: HTMLElement; position: string }[] = [];
       stickyEls.forEach((el: any) => {
@@ -862,13 +804,12 @@ export default function App() {
         el.style.position = 'static';
       });
 
-      // Wait a moment for layout reflow
       await new Promise(resolve => setTimeout(resolve, 150));
 
       const html2canvasFn = (html2canvas as any).default || html2canvas;
       const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
-        scale: 2,
+        scale: 3, // Ultra high resolution for razor-sharp text
         useCORS: true,
         logging: false,
         scrollX: 0,
@@ -892,7 +833,6 @@ export default function App() {
         }
       });
 
-      // Restore original styles
       element.style.width = origElWidth;
       element.style.minWidth = origElMinWidth;
 
@@ -907,35 +847,26 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
-      const pdf = new jsPDFClass('l', 'mm', 'a4'); // landscape (297mm x 210mm)
-      const margin = 10;
-      const printableWidth = 297 - (margin * 2); // 277mm
-      const printableHeight = 210 - (margin * 2); // 190mm
-
-      // Scale Flujo de caja so all months & weeks fit cleanly onto 1 landscape page
-      const scale = Math.min(printableWidth / canvas.width, printableHeight / canvas.height);
-      const imgWidth = canvas.width * scale;
-      const imgHeight = canvas.height * scale;
-
-      const xPos = margin + (printableWidth - imgWidth) / 2;
-      const yPos = margin + (printableHeight - imgHeight) / 2;
-
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', xPos, yPos, imgWidth, imgHeight);
-
-      pdf.save('flujo_de_caja_Nogales.pdf');
+      // Convert canvas to JPG
+      const jpgData = canvas.toDataURL('image/jpeg', 0.95);
+      const link = document.createElement('a');
+      link.href = jpgData;
+      link.download = `flujo_de_caja_${projectTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
-      console.error('Error al exportar flujo de caja a PDF:', error);
-      alert('Error al exportar flujo de caja a PDF: ' + (error instanceof Error ? error.message : String(error)));
+      console.error('Error al exportar flujo de caja a JPG:', error);
+      alert('Error al exportar flujo de caja a JPG: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExportingPDF(null);
     }
   };
 
-  const exportGanttPDF = async () => {
+  // Export Cronograma Gantt as high-resolution JPG (single page)
+  const exportGanttJPG = async () => {
     if (exportingPDF) return;
-    setExportingPDF('cronograma');
+    setExportingPDF('cronograma-jpg');
     try {
       const element = document.getElementById('section-cronograma');
       if (!element) return;
@@ -943,11 +874,9 @@ export default function App() {
       const scrollWrapper = element.querySelector('.gantt-container') as HTMLElement;
       const gridEl = element.querySelector('.gantt-grid') as HTMLElement;
 
-      // Calculate full natural width of the Gantt chart (Code 60px + Partida 240px + 45px per week)
       const totalGanttWidth = 60 + 240 + (calculations.maxSemana * 45);
       const totalWidthWithPadding = totalGanttWidth + 48;
 
-      // Save original styles for full viewport capture
       const origElWidth = element.style.width;
       const origElMinWidth = element.style.minWidth;
       element.style.width = `${totalWidthWithPadding}px`;
@@ -965,7 +894,6 @@ export default function App() {
         origWidth = scrollWrapper.style.width;
         origMinWidth = scrollWrapper.style.minWidth;
 
-        // Force full width expansion so no month is cut off on the right
         scrollWrapper.style.maxHeight = 'none';
         scrollWrapper.style.overflowY = 'visible';
         scrollWrapper.style.overflowX = 'visible';
@@ -973,7 +901,6 @@ export default function App() {
         scrollWrapper.style.minWidth = `${totalGanttWidth}px`;
       }
 
-      // Save original style of grid container
       let origGridWidth = '';
       let origGridMinWidth = '';
       if (gridEl) {
@@ -983,7 +910,6 @@ export default function App() {
         gridEl.style.minWidth = `${totalGanttWidth}px`;
       }
 
-      // Temporarily change sticky elements to static so they render inline in the grid/table
       const stickyEls = element.querySelectorAll('.sticky');
       const originalStickies: { el: HTMLElement; position: string }[] = [];
       stickyEls.forEach((el: any) => {
@@ -991,14 +917,12 @@ export default function App() {
         el.style.position = 'static';
       });
 
-      // Wait a moment for layout reflow
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Capture canvas with html2canvas-pro
       const html2canvasFn = (html2canvas as any).default || html2canvas;
       const canvas = await html2canvasFn(element, {
         backgroundColor: '#0f172a',
-        scale: 2, // high quality
+        scale: 3, // Ultra high resolution for razor-sharp text
         useCORS: true,
         logging: false,
         scrollX: 0,
@@ -1006,7 +930,6 @@ export default function App() {
         onclone: (clonedDoc: Document) => {
           sanitizeClonedDocForPDF(clonedDoc);
 
-          // Additional Gantt-specific enhancements in cloned DOM
           const clonedGanttSection = clonedDoc.getElementById('section-cronograma');
           if (clonedGanttSection) {
             clonedGanttSection.style.width = `${totalWidthWithPadding}px`;
@@ -1027,7 +950,6 @@ export default function App() {
             clonedGrid.style.overflow = 'visible';
           }
 
-          // Ensure partida names in Gantt are unclipped and highly visible
           const nameCells = clonedDoc.querySelectorAll('.g-name');
           nameCells.forEach((node) => {
             const cell = node as HTMLElement;
@@ -1040,7 +962,6 @@ export default function App() {
         }
       });
 
-      // Restore original styles
       element.style.width = origElWidth;
       element.style.minWidth = origElMinWidth;
 
@@ -1059,39 +980,17 @@ export default function App() {
         item.el.style.position = item.position;
       });
 
-      // Generate PDF: Width matches printable landscape page width (277mm), height flows across pages if needed
-      const jsPDFClass = (jsPDF as any).jsPDF || (jsPDF as any).default || jsPDF;
-      const pdf = new jsPDFClass('l', 'mm', 'a4');
-      const margin = 10;
-      const printableWidth = 297 - (margin * 2); // 277mm
-      const printableHeight = 210 - (margin * 2); // 190mm
-
-      const imgWidth = printableWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
-
-      if (imgHeight <= printableHeight) {
-        const yPos = margin + (printableHeight - imgHeight) / 2;
-        pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
-      } else {
-        let heightLeft = imgHeight;
-        let position = margin;
-
-        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-        heightLeft -= printableHeight;
-
-        while (heightLeft > 0) {
-          pdf.addPage();
-          position = margin - (imgHeight - heightLeft);
-          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-          heightLeft -= printableHeight;
-        }
-      }
-
-      pdf.save('cronograma_Nogales.pdf');
+      // Convert canvas to JPG
+      const jpgData = canvas.toDataURL('image/jpeg', 0.95);
+      const link = document.createElement('a');
+      link.href = jpgData;
+      link.download = `cronograma_gantt_${projectTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
-      console.error('Error al exportar cronograma a PDF:', error);
-      alert('Error al exportar cronograma a PDF: ' + (error instanceof Error ? error.message : String(error)));
+      console.error('Error al exportar cronograma a JPG:', error);
+      alert('Error al exportar cronograma a JPG: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExportingPDF(null);
     }
@@ -1103,7 +1002,7 @@ export default function App() {
     let totalManoObra = 0;
     let maxSemana = 0;
 
-    activePartidas.forEach(p => {
+    partidas.forEach(p => {
       totalMateriales += p.mat;
       totalManoObra += p.mo;
       const endWeek = p.inicio + p.duracion - 1;
@@ -1118,14 +1017,14 @@ export default function App() {
       totalProyecto: totalMateriales + totalManoObra,
       maxSemana: maxSemana || 26 // default to 26 weeks if empty
     };
-  }, [activePartidas]);
+  }, [partidas]);
 
   // Compute sub-totals per Specialty & Sub-specialty for collapsible group rendering
   const groupTotals = useMemo(() => {
     const specialtyTotals: Record<string, { mat: number, mo: number, total: number }> = {};
     const subSpecialtyTotals: Record<string, { mat: number, mo: number, total: number }> = {};
 
-    activePartidas.forEach(p => {
+    partidas.forEach(p => {
       const subKey = `${p.esp}-${p.subesp}`;
       const total = p.mat + p.mo;
 
@@ -1145,7 +1044,7 @@ export default function App() {
     });
 
     return { specialtyTotals, subSpecialtyTotals };
-  }, [activePartidas]);
+  }, [partidas]);
 
   // Compute Weekly cash flow data
   const flujoSemanas = useMemo<FlujoSemana[]>(() => {
@@ -1157,7 +1056,7 @@ export default function App() {
       total: 0
     }));
 
-    activePartidas.forEach(p => {
+    partidas.forEach(p => {
       if (p.duracion > 0 && p.inicio > 0) {
         const rateMat = p.mat / p.duracion;
         const rateMo = p.mo / p.duracion;
@@ -1172,17 +1071,17 @@ export default function App() {
     });
 
     return array;
-  }, [activePartidas, calculations.maxSemana]);
+  }, [partidas, calculations.maxSemana]);
 
   // Unique lists of specialties for filtering
   const specialties = useMemo(() => {
-    const list = new Set(activePartidas.map(p => p.esp));
+    const list = new Set(partidas.map(p => p.esp));
     return Array.from(list);
-  }, [activePartidas]);
+  }, [partidas]);
 
   // Filtered list of budget items
   const filteredPartidasWithOriginalIndex = useMemo(() => {
-    return activePartidas
+    return partidas
       .map((p, originalIndex) => ({ ...p, originalIndex }))
       .filter(p => {
         const matchesSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1191,7 +1090,7 @@ export default function App() {
         const matchesSpecialty = selectedSpecialty === 'all' || p.esp === selectedSpecialty;
         return matchesSearch && matchesSpecialty;
       });
-  }, [activePartidas, searchTerm, selectedSpecialty]);
+  }, [partidas, searchTerm, selectedSpecialty]);
 
   // Grouped filtered items for rendering
   const groupedPartidas = useMemo(() => {
@@ -1212,9 +1111,8 @@ export default function App() {
 
   // Reset budget back to defaults
   const handleResetToDefaults = () => {
-    const modeLabel = activeViewMode === 'cliente' ? 'CLIENTE' : 'SUBCONTRATISTA';
-    if (window.confirm(`¿Está seguro de restablecer todos los valores del presupuesto de ${modeLabel} al presupuesto inicial? Perderá los cambios no guardados.`)) {
-      persistChanges(JSON.parse(JSON.stringify(defaultPartidas)), activeViewMode);
+    if (window.confirm('¿Está seguro de restablecer todos los valores al presupuesto inicial? Perderá los cambios no guardados.')) {
+      persistChanges(JSON.parse(JSON.stringify(defaultPartidas)));
     }
   };
 
@@ -1364,7 +1262,7 @@ export default function App() {
                   value={projectTitle}
                   onChange={(e) => {
                     setProjectTitle(e.target.value);
-                    persistChanges(activePartidas, activeViewMode, e.target.value);
+                    persistChanges(partidas, e.target.value);
                   }}
                   className="bg-slate-950/50 hover:bg-slate-950/90 focus:bg-slate-950 text-white font-extrabold border border-dashed border-slate-700 hover:border-slate-500 focus:border-emerald-500 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500/10 transition-all text-xs md:text-sm max-w-[180px] sm:max-w-[240px] md:max-w-[320px]"
                   placeholder="Remodelación Nogales"
@@ -1445,75 +1343,30 @@ export default function App() {
         </div>
       )}
 
-      {/* Budget Mode Selector Bar & Conversion Factor Trigger */}
+      {/* Budget Bar & Conversion Factor Trigger */}
       <div className="px-4 pt-4 md:px-8 max-w-[1800px] w-full mx-auto" data-html2canvas-ignore="true">
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 md:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xl">
           
-          {/* Left: Active Budget Tabs */}
-          <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800/80 overflow-x-auto">
-            <button
-              onClick={() => setActiveViewMode('cliente')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
-                activeViewMode === 'cliente'
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950/60 ring-1 ring-emerald-400/50'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <span className="text-sm">🏢</span>
-              <span>PRESUPUESTO CLIENTE</span>
-              <span className="text-[10px] font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-emerald-500/30 text-emerald-300">
-                {fmtMoneda.format(totalCliente)}
-              </span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (!partidasSubcontratista) {
-                  setShowConversionModal(true);
-                } else {
-                  setActiveViewMode('subcontratista');
-                }
-              }}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
-                activeViewMode === 'subcontratista'
-                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-950/60 ring-1 ring-amber-400/50'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <span className="text-sm">🛠️</span>
-              <span>PRESUPUESTO SUBCONTRATISTA</span>
-              {partidasSubcontratista && totalSubcontratista !== null ? (
-                <span className="text-[10px] font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-amber-500/30 text-amber-300">
-                  {fmtMoneda.format(totalSubcontratista)}
-                </span>
-              ) : (
-                <span className="text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-mono uppercase tracking-wider">
-                  Sin Generar
-                </span>
-              )}
-            </button>
+          {/* Left: Single Budget Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800/80">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
+              <DollarSign className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Presupuesto Único de Obra</span>
+              <span className="text-sm font-black font-mono text-emerald-400">{fmtMoneda.format(calculations.totalProyecto)}</span>
+            </div>
           </div>
 
-          {/* Right: Conversion Button & Comparison badge */}
+          {/* Right: Conversion Factor Button */}
           <div className="flex items-center gap-3 flex-wrap justify-between md:justify-end">
-            {partidasSubcontratista && totalSubcontratista !== null && (
-              <div className="bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2 text-xs font-mono">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Margen / Diferencia:</span>
-                <span className={`font-black ${totalCliente >= totalSubcontratista ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {fmtMoneda.format(totalCliente - totalSubcontratista)}
-                </span>
-                <span className="text-[10px] text-slate-500">
-                  ({(((totalCliente - totalSubcontratista) / (totalCliente || 1)) * 100).toFixed(1)}%)
-                </span>
-              </div>
-            )}
-
             <button
               onClick={() => setShowConversionModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]"
+              title="Aumentar o reducir el presupuesto global aplicando un porcentaje"
             >
               <Percent className="w-4 h-4 text-slate-950" />
-              <span>Factor de Conversión</span>
+              <span>Factor de Conversión (%)</span>
             </button>
           </div>
 
@@ -1575,15 +1428,9 @@ export default function App() {
                   <Layers className="w-5 h-5 text-emerald-400" />
                   1. Matriz de Presupuesto Consolidado
                 </h2>
-                {activeViewMode === 'subcontratista' ? (
-                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black rounded-md uppercase tracking-wider font-mono">
-                    Modo Subcontratista
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black rounded-md uppercase tracking-wider font-mono">
-                    Modo Cliente
-                  </span>
-                )}
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black rounded-md uppercase tracking-wider font-mono">
+                  Presupuesto Único
+                </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">Control de costos y semanas de ejecución por ambientes y acabados</p>
             </div>
@@ -1878,21 +1725,21 @@ export default function App() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={exportFlujoPDF}
+                  onClick={exportFlujoJPG}
                   disabled={exportingPDF !== null}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-[10px] font-bold border border-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Exportar gráfico de flujo de caja a PDF"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 rounded-lg text-[10px] font-bold border border-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                  title="Exportar hoja de flujo de caja en JPG alta resolución (1 Hoja)"
                   data-html2canvas-ignore="true"
                 >
-                  {exportingPDF === 'flujo' ? (
+                  {exportingPDF === 'flujo-jpg' ? (
                     <>
-                      <RefreshCw className="w-3 h-3 text-rose-400 animate-spin" />
-                      Generando...
+                      <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" />
+                      Generando JPG...
                     </>
                   ) : (
                     <>
-                      <Download className="w-3 h-3 text-rose-400" />
-                      PDF
+                      <Download className="w-3 h-3 text-emerald-400" />
+                      Exportar JPG (1 Hoja)
                     </>
                   )}
                 </button>
@@ -2226,21 +2073,21 @@ export default function App() {
                 <p className="text-xs text-slate-400 mt-0.5">Avance y programación temporal de cada partida de obra</p>
               </div>
               <button
-                onClick={exportGanttPDF}
+                onClick={exportGanttJPG}
                 disabled={exportingPDF !== null}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-bold border border-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Exportar cronograma de Gantt a PDF"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 rounded-lg text-xs font-bold border border-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                title="Exportar hoja de cronograma de Gantt en JPG alta resolución (1 Hoja)"
                 data-html2canvas-ignore="true"
               >
-                {exportingPDF === 'cronograma' ? (
+                {exportingPDF === 'cronograma-jpg' ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 text-rose-400 animate-spin" />
-                    Generando...
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    Generando JPG...
                   </>
                 ) : (
                   <>
-                    <Download className="w-3.5 h-3.5 text-rose-400" />
-                    Exportar PDF
+                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                    Exportar JPG (1 Hoja)
                   </>
                 )}
               </button>
@@ -2310,7 +2157,7 @@ export default function App() {
                 })}
 
                 {/* TASK ITEMS ROWS */}
-                {activePartidas.map((p, pIdx) => {
+                {partidas.map((p, pIdx) => {
                   const total = p.mat + p.mo;
                   if (total <= 0) return null;
 
@@ -2694,7 +2541,7 @@ export default function App() {
                 onClick={handleApplyConversionFactor}
                 className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-lg shadow-amber-950 cursor-pointer"
               >
-                {partidasSubcontratista ? 'Re-Generar Presupuesto Subcontratista' : 'Generar Presupuesto Subcontratista'}
+                Aplicar Factor al Presupuesto Único
               </button>
             </div>
           </div>
@@ -2703,7 +2550,7 @@ export default function App() {
 
       {/* 6. Footer bar */}
       <footer className="bg-slate-900 border-t border-slate-800/80 text-[10px] text-slate-500 py-4 px-6 md:px-8 text-center mt-12 font-mono">
-        <p>© 2026 Presupuesto Remodelación Nogales - Todos los derechos reservados. Sincronización determinista con Supabase.</p>
+        <p>© 2026 Gestión de Obra 26.1 - Plataforma de Control Financiero y Programación de Obra. Sincronización con Supabase.</p>
       </footer>
     </div>
   );
