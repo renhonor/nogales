@@ -701,6 +701,7 @@ export default function App() {
         el.style.position = 'static';
       });
 
+      await document.fonts.ready;
       await new Promise(resolve => setTimeout(resolve, 150));
 
       const html2canvasFn = (html2canvas as any).default || html2canvas;
@@ -733,23 +734,38 @@ export default function App() {
 
       const imgWidth = printableWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
 
-      if (imgHeight <= printableHeight) {
-        pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
-      } else {
-        let heightLeft = imgHeight;
-        let position = margin;
+      // Slice the canvas into page-sized chunks so every page (not just the physical
+      // sheet edge) respects the top/bottom margin. Pasting the same full image on
+      // every page and relying on the sheet border to "cut" it (previous approach)
+      // left no top/bottom margin except by coincidence on the very first page.
+      const pxPerMm = canvas.width / imgWidth;
+      const pageSlicePx = Math.max(1, Math.floor(printableHeight * pxPerMm));
+      let renderedPx = 0;
+      let firstPage = true;
 
-        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-        heightLeft -= printableHeight;
+      while (renderedPx < canvas.height) {
+        const sliceHeightPx = Math.min(pageSlicePx, canvas.height - renderedPx);
 
-        while (heightLeft > 0) {
-          pdf.addPage();
-          position = margin - (imgHeight - heightLeft);
-          pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-          heightLeft -= printableHeight;
-        }
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeightPx;
+        const ctx = sliceCanvas.getContext('2d');
+        if (!ctx) break;
+        ctx.drawImage(
+          canvas,
+          0, renderedPx, canvas.width, sliceHeightPx,
+          0, 0, canvas.width, sliceHeightPx
+        );
+
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        const sliceHeightMm = sliceHeightPx / pxPerMm;
+
+        if (!firstPage) pdf.addPage();
+        pdf.addImage(sliceData, 'PNG', margin, margin, imgWidth, sliceHeightMm);
+
+        renderedPx += sliceHeightPx;
+        firstPage = false;
       }
 
       pdf.save(`presupuesto_${projectTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_A4.pdf`);
@@ -804,6 +820,7 @@ export default function App() {
         el.style.position = 'static';
       });
 
+      await document.fonts.ready;
       await new Promise(resolve => setTimeout(resolve, 150));
 
       const html2canvasFn = (html2canvas as any).default || html2canvas;
@@ -917,6 +934,7 @@ export default function App() {
         el.style.position = 'static';
       });
 
+      await document.fonts.ready;
       await new Promise(resolve => setTimeout(resolve, 150));
 
       const html2canvasFn = (html2canvas as any).default || html2canvas;
